@@ -15,7 +15,7 @@ android {
         versionName = "1.0.0"
 
         ndk {
-            abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
+            abiFilters += listOf("arm64-v8a", "x86_64")
         }
 
         externalNativeBuild {
@@ -59,6 +59,7 @@ android {
 
     buildFeatures {
         viewBinding = true
+        prefab = true
     }
 }
 
@@ -82,4 +83,7 @@ dependencies {
 
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+
+    // Oboe (low-latency audio, provides prefab for CMake)
+    implementation("com.google.oboe:oboe:1.9.0")
 }
