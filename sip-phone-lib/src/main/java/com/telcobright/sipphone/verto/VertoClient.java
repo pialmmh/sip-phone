@@ -77,13 +77,15 @@ public class VertoClient {
             }
 
             @Override public void onClosed(WebSocket ws, int code, String reason) {
-                log.info("WebSocket closed: {} {}", code, reason);
+                log.warn("WebSocket CLOSED — server={}, code={}, reason='{}'", serverUrl, code, reason);
                 listener.onDisconnected(reason);
             }
 
             @Override public void onFailure(WebSocket ws, Throwable t, Response response) {
-                log.error("WebSocket failure: {}", t.getMessage());
-                listener.onDisconnected(t.getMessage() != null ? t.getMessage() : "Connection failed");
+                String detail = t.getMessage() != null ? t.getMessage() : "Unknown error";
+                int httpCode = response != null ? response.code() : -1;
+                log.error("WebSocket FAILED — server={}, error='{}', httpCode={}", serverUrl, detail, httpCode);
+                listener.onDisconnected(detail);
             }
         });
     }
@@ -151,14 +153,25 @@ public class VertoClient {
 
         executor.submit(() -> {
             try {
+                log.info("Sending login request for user '{}' to {}", login, serverUrl);
                 JsonObject response = sendRequestAsync("login", params).get(10, TimeUnit.SECONDS);
                 if (response.has("sessid")) {
                     sessionId = response.get("sessid").getAsString();
+                    log.info("Registration SUCCESS — user='{}', sessionId={}", login, sessionId);
                     listener.onLoginSuccess(sessionId);
                 } else {
-                    listener.onLoginFailed("Login failed");
+                    log.warn("Registration FAILED — user='{}', response: {}", login, response);
+                    listener.onLoginFailed("Login failed — unexpected response");
                 }
+            } catch (java.util.concurrent.TimeoutException e) {
+                log.error("Registration TIMEOUT — user='{}', server={} (no response in 10s)", login, serverUrl);
+                listener.onLoginFailed("Login timeout — no response from server");
+            } catch (java.util.concurrent.ExecutionException e) {
+                String cause = e.getCause() != null ? e.getCause().getMessage() : e.getMessage();
+                log.error("Registration REJECTED — user='{}', server={}, error: {}", login, serverUrl, cause);
+                listener.onLoginFailed("Login rejected: " + cause);
             } catch (Exception e) {
+                log.error("Registration ERROR — user='{}', server={}: {}", login, serverUrl, e.getMessage(), e);
                 listener.onLoginFailed(e.getMessage() != null ? e.getMessage() : "Login error");
             }
         });

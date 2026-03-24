@@ -1,3 +1,4 @@
+com/telcobright/sipphone/media/PcmuCodec.class
 com/telcobright/sipphone/verto/VertoClient.class
 com/telcobright/sipphone/statemachine/StateMachineEvent.class
 com/telcobright/sipphone/call/events/CallEvents$IncomingCallEvent.class
@@ -6,6 +7,7 @@ com/telcobright/sipphone/call/events/CallEvents$MediaUpdateEvent.class
 com/telcobright/sipphone/verto/VertoClient$VertoEventListener.class
 com/telcobright/sipphone/statemachine/StateConfig.class
 com/telcobright/sipphone/call/events/CallEvents$InviteEvent.class
+com/telcobright/sipphone/media/PcmuRtpSession.class
 com/telcobright/sipphone/statemachine/FluentBuilder.class
 com/telcobright/sipphone/call/CallData.class
 com/telcobright/sipphone/statemachine/FluentBuilder$StateBuilder$TransitionBuilder.class
@@ -16,6 +18,7 @@ com/telcobright/sipphone/statemachine/StateMachineRegistry.class
 com/telcobright/sipphone/verto/SdpBuilder.class
 com/telcobright/sipphone/call/events/CallEvents$HangupEvent.class
 com/telcobright/sipphone/call/CallData$CallDirection.class
+com/telcobright/sipphone/media/RtpPacket.class
 com/telcobright/sipphone/call/events/CallEvents$RegisteredEvent.class
 com/telcobright/sipphone/statemachine/FluentBuilder$StateBuilder.class
 com/telcobright/sipphone/call/events/CallEvents.class
@@ -24,6 +27,7 @@ com/telcobright/sipphone/call/events/CallEvents$AnsweredEvent.class
 com/telcobright/sipphone/call/CallVolatileContext.class
 com/telcobright/sipphone/statemachine/GenericStateMachine$TriConsumer.class
 com/telcobright/sipphone/call/events/CallEvents$RingingEvent.class
+com/telcobright/sipphone/media/PcmuRtpSession$FrameReceiver.class
 com/telcobright/sipphone/statemachine/FluentBuilder$StayDef.class
 com/telcobright/sipphone/statemachine/GenericEvent.class
 com/telcobright/sipphone/call/events/CallEvents$RegistrationFailedEvent.class

@@ -50,10 +50,26 @@ public class SipPhoneMain implements VertoClient.VertoEventListener {
     private volatile boolean loggedIn;
 
     public static void main(String[] args) throws Exception {
-        new SipPhoneMain().run();
+        if (args.length > 0 && "--cli".equals(args[0])) {
+            new SipPhoneMain().run();
+        } else {
+            /* Launch Swing UI */
+            javax.swing.SwingUtilities.invokeLater(() -> {
+                try {
+                    javax.swing.UIManager.setLookAndFeel(
+                        javax.swing.UIManager.getSystemLookAndFeelClassName());
+                } catch (Exception ignored) {}
+                var frame = new com.telcobright.sipphone.linux.ui.SipPhoneFrame();
+                frame.setVisible(true);
+            });
+        }
     }
 
     private void run() throws Exception {
+        /* Clear terminal on start */
+        System.out.print("\033[H\033[2J");
+        System.out.flush();
+
         allocatePorts();
         localIp = detectLocalIp();
 
