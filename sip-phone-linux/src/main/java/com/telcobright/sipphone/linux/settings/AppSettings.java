@@ -23,6 +23,7 @@ public class AppSettings {
     private String username = "";
     private String password = "";
     private String preferredCodec = "PCMU";
+    private String lastDialedNumber = "";
 
     public String getServerUrl() { return serverUrl; }
     public void setServerUrl(String serverUrl) { this.serverUrl = serverUrl; }
@@ -35,6 +36,9 @@ public class AppSettings {
 
     public String getPreferredCodec() { return preferredCodec; }
     public void setPreferredCodec(String codec) { this.preferredCodec = codec; }
+
+    public String getLastDialedNumber() { return lastDialedNumber; }
+    public void setLastDialedNumber(String number) { this.lastDialedNumber = number; }
 
     public void save() {
         try {

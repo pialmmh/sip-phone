@@ -51,6 +51,7 @@ public class SipPhoneFrame extends JFrame implements VertoClient.VertoEventListe
     private PcmuRtpSession rtpSession;
     private PcmuAudioEngine audioEngine;
     private String currentCallId;
+    private String pendingSdp;  // SDP from verto.media, used when verto.answer arrives
     private int localRtpPort;
     private String localIp;
     private volatile boolean registered;
@@ -230,6 +231,7 @@ public class SipPhoneFrame extends JFrame implements VertoClient.VertoEventListe
         tfUsername.setText(settings.getUsername());
         tfPassword.setText(settings.getPassword());
         cbCodec.setSelectedItem(settings.getPreferredCodec());
+        tfPhoneNumber.setText(settings.getLastDialedNumber());
     }
 
     private void saveSettings() {
@@ -280,6 +282,9 @@ public class SipPhoneFrame extends JFrame implements VertoClient.VertoEventListe
         String sdpOffer = SdpBuilder.buildOffer(localIp, localRtpPort, codec);
         currentCallId = vertoClient.invite(number, sdpOffer);
 
+        settings.setLastDialedNumber(number);
+        settings.save();
+
         setCallUiState(true);
         lblCallStatus.setText("Calling " + number + "...");
         lblCallStatus.setForeground(Color.ORANGE);
@@ -292,6 +297,7 @@ public class SipPhoneFrame extends JFrame implements VertoClient.VertoEventListe
         }
         stopMedia();
         currentCallId = null;
+        pendingSdp = null;
         setCallUiState(false);
         lblCallStatus.setText("Idle");
         lblCallStatus.setForeground(Color.BLACK);
@@ -299,12 +305,16 @@ public class SipPhoneFrame extends JFrame implements VertoClient.VertoEventListe
     }
 
     private void startMedia(String remoteSdp) {
+        log.info("startMedia called, SDP length={}, SDP:\n{}",
+                 remoteSdp != null ? remoteSdp.length() : 0, remoteSdp);
         SdpBuilder.SdpMediaInfo info = SdpBuilder.parseRemoteSdp(remoteSdp);
         if (info == null) {
+            log.error("SDP parse FAILED for:\n{}", remoteSdp);
             lblCallStatus.setText("ERROR: Bad SDP");
             lblCallStatus.setForeground(Color.RED);
             return;
         }
+        log.info("SDP parsed: codec={}, remote={}:{}", info.codecName(), info.remoteIp(), info.remoteRtpPort());
 
         String codec = info.codecName();
         log.info("Starting media: codec={}, remote={}:{}", codec, info.remoteIp(), info.remoteRtpPort());
@@ -432,7 +442,21 @@ public class SipPhoneFrame extends JFrame implements VertoClient.VertoEventListe
     }
 
     @Override public void onCallAnswered(String callId, String sdp) {
-        SwingUtilities.invokeLater(() -> startMedia(sdp));
+        /* Use SDP from this event, or fall back to SDP saved from verto.media */
+        String mediaSdp = (sdp != null && !sdp.isEmpty()) ? sdp : pendingSdp;
+        log.info("onCallAnswered: callId={}, sdpLen={}, usingPendingSdp={}",
+                 callId, mediaSdp != null ? mediaSdp.length() : 0, mediaSdp == pendingSdp);
+
+        if (mediaSdp != null && !mediaSdp.isEmpty()) {
+            SwingUtilities.invokeLater(() -> startMedia(mediaSdp));
+        } else {
+            log.error("No SDP available for answered call {}", callId);
+            SwingUtilities.invokeLater(() -> {
+                lblCallStatus.setText("ERROR: No SDP");
+                lblCallStatus.setForeground(Color.RED);
+            });
+        }
+        pendingSdp = null;
     }
 
     @Override public void onCallEnded(String callId, String reason) {
@@ -447,10 +471,22 @@ public class SipPhoneFrame extends JFrame implements VertoClient.VertoEventListe
     }
 
     @Override public void onMediaUpdate(String callId, String sdp) {
-        SwingUtilities.invokeLater(() -> {
-            stopMedia();
-            startMedia(sdp);
-        });
+        log.info("onMediaUpdate: callId={}, sdpLen={}", callId, sdp != null ? sdp.length() : 0);
+        if (audioEngine != null && audioEngine.isRunning()) {
+            /* Mid-call media update (re-INVITE) — restart media */
+            SwingUtilities.invokeLater(() -> {
+                stopMedia();
+                startMedia(sdp);
+            });
+        } else {
+            /* Pre-answer: save SDP, start media when verto.answer arrives */
+            pendingSdp = sdp;
+            log.info("SDP saved, waiting for verto.answer to start media");
+            SwingUtilities.invokeLater(() -> {
+                lblCallStatus.setText("Ringing...");
+                lblCallStatus.setForeground(Color.ORANGE);
+            });
+        }
     }
 
     @Override public void onError(String error) {

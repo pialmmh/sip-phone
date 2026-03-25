@@ -54,7 +54,6 @@ public class VertoClient {
         this.password = password;
         this.listener = listener;
         this.client = new OkHttpClient.Builder()
-                .pingInterval(30, TimeUnit.SECONDS)
                 .readTimeout(0, TimeUnit.MILLISECONDS)
                 .build();
     }
@@ -69,6 +68,7 @@ public class VertoClient {
             }
 
             @Override public void onMessage(WebSocket ws, String text) {
+                log.debug("WS RECV: {}", text);
                 handleMessage(text);
             }
 
@@ -205,8 +205,18 @@ public class VertoClient {
     private void handleEvent(JsonObject json) {
         String method = json.get("method").getAsString();
         JsonObject params = json.has("params") ? json.getAsJsonObject("params") : null;
-        if (params == null) return;
         int eventId = json.has("id") ? json.get("id").getAsInt() : 0;
+
+        /* Handle verto.ping immediately — critical for keeping connection alive */
+        if ("verto.ping".equals(method)) {
+            log.trace("Responding to verto.ping (id={})", eventId);
+            JsonObject pongResult = new JsonObject();
+            pongResult.addProperty("method", "verto.ping");
+            sendResult(eventId, pongResult);
+            return;
+        }
+
+        if (params == null) return;
 
         switch (method) {
             case "verto.invite" -> {
