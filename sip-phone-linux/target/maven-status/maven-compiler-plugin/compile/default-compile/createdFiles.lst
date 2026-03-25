@@ -1,6 +1,7 @@
 com/telcobright/sipphone/linux/ui/SipPhoneFrame$1.class
 com/telcobright/sipphone/linux/media/JavaSoundAudioEngine.class
 com/telcobright/sipphone/linux/ui/SipPhoneFrame.class
+com/telcobright/sipphone/linux/media/AmrAudioEngine.class
 com/telcobright/sipphone/linux/media/NativeMediaBridge$QualityListener.class
 com/telcobright/sipphone/linux/SipPhoneMain.class
 com/telcobright/sipphone/linux/media/PcmuAudioEngine.class

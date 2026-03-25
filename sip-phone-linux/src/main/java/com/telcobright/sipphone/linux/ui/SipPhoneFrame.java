@@ -1,5 +1,7 @@
 package com.telcobright.sipphone.linux.ui;
 
+import com.telcobright.sipphone.linux.media.AmrAudioEngine;
+import com.telcobright.sipphone.linux.media.NativeMediaBridge;
 import com.telcobright.sipphone.linux.media.PcmuAudioEngine;
 import com.telcobright.sipphone.linux.settings.AppSettings;
 import com.telcobright.sipphone.media.PcmuRtpSession;
@@ -48,8 +50,11 @@ public class SipPhoneFrame extends JFrame implements VertoClient.VertoEventListe
 
     /* State */
     private VertoClient vertoClient;
-    private PcmuRtpSession rtpSession;
-    private PcmuAudioEngine audioEngine;
+    private PcmuRtpSession pcmuRtpSession;
+    private PcmuAudioEngine pcmuAudioEngine;
+    private NativeMediaBridge amrBridge;
+    private AmrAudioEngine amrAudioEngine;
+    private String activeCodec;   // "PCMU", "AMR-NB", or "AMR-WB"
     private String currentCallId;
     private String pendingSdp;  // SDP from verto.media, used when verto.answer arrives
     private int localRtpPort;
@@ -185,7 +190,9 @@ public class SipPhoneFrame extends JFrame implements VertoClient.VertoEventListe
         btnMute = new JToggleButton("Mute");
         btnMute.setEnabled(false);
         btnMute.addActionListener(e -> {
-            if (audioEngine != null) audioEngine.setMuted(btnMute.isSelected());
+            boolean mute = btnMute.isSelected();
+            if (pcmuAudioEngine != null) pcmuAudioEngine.setMuted(mute);
+            if (amrAudioEngine != null) amrAudioEngine.setMuted(mute);
         });
         btnRow.add(btnMute);
 
@@ -319,22 +326,20 @@ public class SipPhoneFrame extends JFrame implements VertoClient.VertoEventListe
         String codec = info.codecName();
         log.info("Starting media: codec={}, remote={}:{}", codec, info.remoteIp(), info.remoteRtpPort());
 
+        activeCodec = codec;
         if ("PCMU".equals(codec)) {
             startPcmuMedia(info);
         } else {
-            // AMR via JNI — TODO: wire up NativeMediaBridge here
-            lblCallStatus.setText("AMR not yet wired for Linux");
-            lblCallStatus.setForeground(Color.ORANGE);
-            log.warn("AMR codec selected but native media bridge not connected yet");
+            startAmrMedia(info);
         }
     }
 
     private void startPcmuMedia(SdpBuilder.SdpMediaInfo info) {
         try {
-            rtpSession = new PcmuRtpSession(info.remoteIp(), info.remoteRtpPort(), localRtpPort);
-            audioEngine = new PcmuAudioEngine(rtpSession);
-            rtpSession.start();
-            audioEngine.start();
+            pcmuRtpSession = new PcmuRtpSession(info.remoteIp(), info.remoteRtpPort(), localRtpPort);
+            pcmuAudioEngine = new PcmuAudioEngine(pcmuRtpSession);
+            pcmuRtpSession.start();
+            pcmuAudioEngine.start();
 
             lblCallStatus.setText("In Call (PCMU)");
             lblCallStatus.setForeground(new Color(76, 175, 80));
@@ -344,14 +349,56 @@ public class SipPhoneFrame extends JFrame implements VertoClient.VertoEventListe
         } catch (Exception e) {
             lblCallStatus.setText("Audio error: " + e.getMessage());
             lblCallStatus.setForeground(Color.RED);
-            log.error("Failed to start audio: {}", e.getMessage(), e);
+            log.error("Failed to start PCMU audio: {}", e.getMessage(), e);
+        }
+    }
+
+    private void startAmrMedia(SdpBuilder.SdpMediaInfo info) {
+        try {
+            int codecType = info.codecType();   // 0=NB, 1=WB
+            int sampleRate = (codecType == 1) ? 16000 : 8000;
+            int initialMode = (codecType == 1) ? 8 : 7;  // WB 23.85k or NB 12.2k
+
+            amrBridge = new NativeMediaBridge();
+            boolean created = amrBridge.nativeCreateRtpSession(
+                    info.remoteIp(), info.remoteRtpPort(), info.remoteRtcpPort(),
+                    localRtpPort, localRtpPort + 1,
+                    new Random().nextInt(), info.payloadType(),
+                    codecType, initialMode, false, null);
+
+            if (!created) {
+                lblCallStatus.setText("ERROR: Native RTP session failed");
+                lblCallStatus.setForeground(Color.RED);
+                log.error("Failed to create native AMR RTP session");
+                return;
+            }
+
+            amrAudioEngine = new AmrAudioEngine(amrBridge, sampleRate);
+            amrAudioEngine.start();
+
+            String codecLabel = (codecType == 1) ? "AMR-WB" : "AMR-NB";
+            lblCallStatus.setText("In Call (" + codecLabel + ")");
+            lblCallStatus.setForeground(new Color(76, 175, 80));
+            startDurationTimer();
+
+            log.info("{} media active: local:{} -> {}:{}", codecLabel, localRtpPort,
+                     info.remoteIp(), info.remoteRtpPort());
+        } catch (Exception e) {
+            lblCallStatus.setText("Audio error: " + e.getMessage());
+            lblCallStatus.setForeground(Color.RED);
+            log.error("Failed to start AMR audio: {}", e.getMessage(), e);
         }
     }
 
     private void stopMedia() {
         stopDurationTimer();
-        if (audioEngine != null) { audioEngine.stop(); audioEngine = null; }
-        if (rtpSession != null) { rtpSession.stop(); rtpSession = null; }
+        /* Stop PCMU */
+        if (pcmuAudioEngine != null) { pcmuAudioEngine.stop(); pcmuAudioEngine = null; }
+        if (pcmuRtpSession != null) { pcmuRtpSession.stop(); pcmuRtpSession = null; }
+        /* Stop AMR */
+        if (amrAudioEngine != null) { amrAudioEngine.stop(); amrAudioEngine = null; }
+        if (amrBridge != null) { amrBridge.nativeDestroyRtpSession(); amrBridge = null; }
+        activeCodec = null;
     }
 
     /* === UI State === */
@@ -472,7 +519,8 @@ public class SipPhoneFrame extends JFrame implements VertoClient.VertoEventListe
 
     @Override public void onMediaUpdate(String callId, String sdp) {
         log.info("onMediaUpdate: callId={}, sdpLen={}", callId, sdp != null ? sdp.length() : 0);
-        if (audioEngine != null && audioEngine.isRunning()) {
+        boolean mediaActive = (pcmuAudioEngine != null) || (amrAudioEngine != null && amrAudioEngine.isRunning());
+        if (mediaActive) {
             /* Mid-call media update (re-INVITE) — restart media */
             SwingUtilities.invokeLater(() -> {
                 stopMedia();
