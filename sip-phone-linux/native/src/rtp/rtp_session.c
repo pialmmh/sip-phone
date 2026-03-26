@@ -142,11 +142,11 @@ int rtp_session_send_frame(RtpSession* session, const int16_t* pcm, int cmr) {
                                     pcm, amr_frame);
     if (amr_len <= 0) return -1;
 
-    /* Build AMR RTP payload (RFC 4867 octet-aligned) */
+    /* Build AMR RTP payload (RFC 4867 bandwidth-efficient) */
     uint8_t payload[128];
     int cmr_value = (cmr >= 0) ? cmr : AMR_RTP_CMR_NO_REQUEST;
-    int payload_len = amr_rtp_payload_build(cmr_value, session->current_mode, 1,
-                                             amr_frame, amr_len, payload);
+    int payload_len = amr_rtp_payload_build_be(cmr_value, session->current_mode, 1,
+                                                amr_frame, amr_len, payload);
     if (payload_len <= 0) return -1;
 
     /* Build RTP packet */
@@ -208,18 +208,18 @@ int rtp_session_receive_frame(RtpSession* session, int16_t* pcm_out,
         int payload_len = (int)received - hdr_len;
 
         int cmr, frame_type, quality;
-        const uint8_t* amr_frame;
+        uint8_t amr_frame_buf[64];
         int amr_frame_len;
 
-        if (amr_rtp_payload_parse(payload, payload_len,
-                                   &cmr, &frame_type, &quality,
-                                   &amr_frame, &amr_frame_len) == 0) {
+        if (amr_rtp_payload_parse_be(payload, payload_len,
+                                      &cmr, &frame_type, &quality,
+                                      amr_frame_buf, &amr_frame_len) == 0) {
 
             /* Store in jitter buffer (raw AMR frame with TOC prepended for decoder) */
             uint8_t decoder_input[256];
             /* TOC byte for decoder: [FT(4)][Q(1)][padding(3)] */
             decoder_input[0] = (uint8_t)((frame_type << 3) | (quality << 2));
-            memcpy(&decoder_input[1], amr_frame, amr_frame_len);
+            memcpy(&decoder_input[1], amr_frame_buf, amr_frame_len);
 
             jitter_buffer_put(&session->jitter_buffer, hdr.sequence, hdr.timestamp,
                              decoder_input, amr_frame_len + 1);

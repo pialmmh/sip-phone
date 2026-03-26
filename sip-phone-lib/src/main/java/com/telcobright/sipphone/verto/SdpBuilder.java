@@ -54,7 +54,7 @@ public final class SdpBuilder {
                 "t=0 0\r\n" +
                 "m=audio " + rtpPort + " RTP/AVP " + pt + " " + (pt + 1) + "\r\n" +
                 "a=rtpmap:" + pt + " " + codecName + "/" + sampleRate + "\r\n" +
-                "a=fmtp:" + pt + " octet-align=1; mode-change-capability=2; max-red=0\r\n" +
+                "a=fmtp:" + pt + " octet-align=0; mode-change-capability=2; max-red=0\r\n" +
                 "a=ptime:20\r\n" +
                 "a=sendrecv\r\n" +
                 "a=rtpmap:" + (pt + 1) + " telephone-event/8000\r\n" +

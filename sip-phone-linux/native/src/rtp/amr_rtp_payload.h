@@ -8,55 +8,70 @@ extern "C" {
 #endif
 
 /**
- * AMR RTP payload format (RFC 4867) — octet-aligned mode.
+ * AMR RTP payload format (RFC 4867).
  *
- * Octet-aligned format (simpler, recommended):
- *   +--------+-----+-----+
- *   | CMR    | RES | PAD |   CMR header (1 byte)
- *   +--------+-----+-----+
- *   | F | FT  | Q  | PAD |   TOC entry (1 byte per frame)
- *   +--------+-----+-----+
- *   |   AMR frame data    |   Speech data
- *   +---------------------+
+ * Bandwidth-efficient format (octet-align=0):
+ *   Bits packed tightly, no byte padding between fields.
  *
- * CMR = Codec Mode Request (4 bits) — tells remote to switch mode
- * F   = Follow bit (1 = more TOC entries follow)
- * FT  = Frame Type (4 bits) = AMR mode
- * Q   = Quality (1 = good frame)
+ *   |CMR (4 bits)|F(1)|FT(4)|Q(1)| frame bits... |padding to byte|
+ *
+ *   Total header = 10 bits, then frame data bits follow immediately.
+ *
+ * Octet-aligned format (octet-align=1):
+ *   Each field padded to byte boundary.
+ *   CMR(4)+pad(4) = 1 byte, F(1)+FT(4)+Q(1)+pad(2) = 1 byte, then frame bytes.
  */
 
-#define AMR_RTP_CMR_NO_REQUEST  15  /* No mode change requested */
+#define AMR_RTP_CMR_NO_REQUEST  15
+
+/* AMR-NB frame sizes in BITS per mode (for bandwidth-efficient packing) */
+static const int amr_nb_frame_bits[] = {
+     95, /* MR475:  4.75 kbps */
+    103, /* MR515:  5.15 kbps */
+    118, /* MR59:   5.90 kbps */
+    134, /* MR67:   6.70 kbps */
+    148, /* MR74:   7.40 kbps */
+    159, /* MR795:  7.95 kbps */
+    204, /* MR102: 10.2  kbps */
+    244, /* MR122: 12.2  kbps */
+     39  /* SID */
+};
 
 /**
- * Build an AMR RTP payload (octet-aligned, single frame).
+ * Build bandwidth-efficient AMR RTP payload (single frame).
  *
- * @param cmr           Codec Mode Request (0-8 for NB, 0-9 for WB, or 15=none)
- * @param frame_type    AMR mode/frame type of the encoded frame
- * @param quality       1 = good frame, 0 = bad/lost
- * @param amr_frame     Encoded AMR frame data
- * @param amr_frame_len Length of AMR frame data
- * @param rtp_payload   Output buffer (must be amr_frame_len + 2)
- * @return total payload length, or -1 on error
+ * @return total payload length in bytes, or -1 on error
  */
-int amr_rtp_payload_build(int cmr, int frame_type, int quality,
-                          const uint8_t* amr_frame, int amr_frame_len,
-                          uint8_t* rtp_payload);
+int amr_rtp_payload_build_be(int cmr, int frame_type, int quality,
+                              const uint8_t* amr_frame, int amr_frame_len,
+                              uint8_t* rtp_payload);
 
 /**
- * Parse an AMR RTP payload (octet-aligned, single frame).
+ * Parse bandwidth-efficient AMR RTP payload (single frame).
  *
- * @param rtp_payload     Input RTP payload
- * @param payload_len     Length of payload
- * @param cmr             [out] Codec Mode Request from remote
- * @param frame_type      [out] AMR mode/frame type
- * @param quality         [out] Quality bit
- * @param amr_frame       [out] Pointer to AMR frame data within payload
- * @param amr_frame_len   [out] Length of AMR frame data
  * @return 0 on success, -1 on error
  */
-int amr_rtp_payload_parse(const uint8_t* rtp_payload, int payload_len,
-                          int* cmr, int* frame_type, int* quality,
-                          const uint8_t** amr_frame, int* amr_frame_len);
+int amr_rtp_payload_parse_be(const uint8_t* rtp_payload, int payload_len,
+                              int* cmr, int* frame_type, int* quality,
+                              uint8_t* amr_frame_out, int* amr_frame_len);
+
+/**
+ * Build octet-aligned AMR RTP payload (single frame).
+ */
+int amr_rtp_payload_build_oa(int cmr, int frame_type, int quality,
+                              const uint8_t* amr_frame, int amr_frame_len,
+                              uint8_t* rtp_payload);
+
+/**
+ * Parse octet-aligned AMR RTP payload (single frame).
+ */
+int amr_rtp_payload_parse_oa(const uint8_t* rtp_payload, int payload_len,
+                              int* cmr, int* frame_type, int* quality,
+                              const uint8_t** amr_frame, int* amr_frame_len);
+
+/* Legacy names — point to octet-aligned by default */
+#define amr_rtp_payload_build amr_rtp_payload_build_oa
+#define amr_rtp_payload_parse amr_rtp_payload_parse_oa
 
 #ifdef __cplusplus
 }
