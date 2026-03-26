@@ -142,11 +142,16 @@ int rtp_session_send_frame(RtpSession* session, const int16_t* pcm, int cmr) {
                                     pcm, amr_frame);
     if (amr_len <= 0) return -1;
 
+    /* Encoder output: byte 0 = TOC (FT+Q), bytes 1..N = speech data.
+     * Skip TOC byte — the RTP payload builder adds its own CMR+TOC. */
+    uint8_t* speech_data = amr_frame + 1;
+    int speech_len = amr_len - 1;
+
     /* Build AMR RTP payload (RFC 4867 bandwidth-efficient) */
     uint8_t payload[128];
     int cmr_value = (cmr >= 0) ? cmr : AMR_RTP_CMR_NO_REQUEST;
     int payload_len = amr_rtp_payload_build_be(cmr_value, session->current_mode, 1,
-                                                amr_frame, amr_len, payload);
+                                                speech_data, speech_len, payload);
     if (payload_len <= 0) return -1;
 
     /* Build RTP packet */
