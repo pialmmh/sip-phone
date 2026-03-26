@@ -16,6 +16,7 @@ import javax.swing.border.TitledBorder;
 import java.awt.*;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
+import java.util.List;
 import java.util.Random;
 import java.util.concurrent.*;
 
@@ -63,9 +64,16 @@ public class SipPhoneFrame extends JFrame implements VertoClient.VertoEventListe
     private ScheduledExecutorService timerExecutor;
     private long callStartTime;
 
+    /* Profile */
+    private JComboBox<String> cbProfile;
+    private String currentProfileName;
+
     public SipPhoneFrame() {
         super("SIP Phone");
-        settings = AppSettings.load();
+        AppSettings.migrateIfNeeded();
+        currentProfileName = AppSettings.getLastProfile();
+        if (currentProfileName.isEmpty()) currentProfileName = "btcl";
+        settings = AppSettings.loadProfile(currentProfileName);
         allocatePorts();
         localIp = detectLocalIp();
         initUi();
@@ -106,22 +114,32 @@ public class SipPhoneFrame extends JFrame implements VertoClient.VertoEventListe
         c.insets = new Insets(2, 4, 2, 4);
         c.fill = GridBagConstraints.HORIZONTAL;
 
+        /* Profile selector */
+        c.gridx = 0; c.gridy = 0; c.weightx = 0; c.gridwidth = 1;
+        panel.add(new JLabel("Profile:"), c);
+        c.gridx = 1; c.weightx = 1; c.gridwidth = 2;
+        List<String> profiles = AppSettings.listProfiles();
+        cbProfile = new JComboBox<>(profiles.toArray(new String[0]));
+        cbProfile.setSelectedItem(currentProfileName);
+        cbProfile.addActionListener(e -> switchProfile((String) cbProfile.getSelectedItem()));
+        panel.add(cbProfile, c);
+
         /* Server URL */
-        c.gridx = 0; c.gridy = 0; c.weightx = 0;
+        c.gridx = 0; c.gridy = 1; c.weightx = 0; c.gridwidth = 1;
         panel.add(new JLabel("Server:"), c);
         c.gridx = 1; c.weightx = 1; c.gridwidth = 2;
         tfServerUrl = new JTextField(20);
         panel.add(tfServerUrl, c);
 
         /* Username */
-        c.gridx = 0; c.gridy = 1; c.weightx = 0; c.gridwidth = 1;
+        c.gridx = 0; c.gridy = 2; c.weightx = 0; c.gridwidth = 1;
         panel.add(new JLabel("User:"), c);
         c.gridx = 1; c.weightx = 1;
         tfUsername = new JTextField(10);
         panel.add(tfUsername, c);
 
         /* Password */
-        c.gridx = 0; c.gridy = 2; c.weightx = 0;
+        c.gridx = 0; c.gridy = 3; c.weightx = 0;
         panel.add(new JLabel("Pass:"), c);
         c.gridx = 1; c.weightx = 1;
         tfPassword = new JPasswordField(10);
@@ -138,13 +156,13 @@ public class SipPhoneFrame extends JFrame implements VertoClient.VertoEventListe
         btnRegister.addActionListener(e -> doRegister());
         btnRow.add(btnRegister);
 
-        c.gridx = 0; c.gridy = 3; c.gridwidth = 3; c.weightx = 1;
+        c.gridx = 0; c.gridy = 4; c.gridwidth = 3; c.weightx = 1;
         panel.add(btnRow, c);
 
         /* Status */
         lblRegStatus = new JLabel("Not registered");
         lblRegStatus.setForeground(Color.GRAY);
-        c.gridx = 0; c.gridy = 4; c.gridwidth = 3;
+        c.gridx = 0; c.gridy = 5; c.gridwidth = 3;
         panel.add(lblRegStatus, c);
 
         return panel;
@@ -231,7 +249,26 @@ public class SipPhoneFrame extends JFrame implements VertoClient.VertoEventListe
         return panel;
     }
 
-    /* === Settings === */
+    /* === Settings & Profiles === */
+
+    private void switchProfile(String profileName) {
+        if (profileName == null || profileName.equals(currentProfileName)) return;
+        currentProfileName = profileName;
+        settings = AppSettings.loadProfile(profileName);
+        AppSettings.saveLastProfile(profileName);
+        loadSettingsToUi();
+        /* Disconnect old session when switching profiles */
+        if (vertoClient != null) {
+            vertoClient.disconnect();
+            vertoClient = null;
+            registered = false;
+            lblRegStatus.setText("Not registered");
+            lblRegStatus.setForeground(Color.GRAY);
+            btnRegister.setText("Register");
+        }
+        setTitle("SIP Phone — " + profileName);
+        log.info("Switched to profile: {}", profileName);
+    }
 
     private void loadSettingsToUi() {
         tfServerUrl.setText(settings.getServerUrl());
@@ -239,6 +276,7 @@ public class SipPhoneFrame extends JFrame implements VertoClient.VertoEventListe
         tfPassword.setText(settings.getPassword());
         cbCodec.setSelectedItem(settings.getPreferredCodec());
         tfPhoneNumber.setText(settings.getLastDialedNumber());
+        setTitle("SIP Phone — " + currentProfileName);
     }
 
     private void saveSettings() {
@@ -246,7 +284,8 @@ public class SipPhoneFrame extends JFrame implements VertoClient.VertoEventListe
         settings.setUsername(tfUsername.getText().trim());
         settings.setPassword(new String(tfPassword.getPassword()));
         settings.setPreferredCodec((String) cbCodec.getSelectedItem());
-        settings.save();
+        settings.saveProfile(currentProfileName);
+        AppSettings.saveLastProfile(currentProfileName);
         lblRegStatus.setText("Settings saved");
         lblRegStatus.setForeground(Color.BLUE);
     }
@@ -290,7 +329,7 @@ public class SipPhoneFrame extends JFrame implements VertoClient.VertoEventListe
         currentCallId = vertoClient.invite(number, sdpOffer);
 
         settings.setLastDialedNumber(number);
-        settings.save();
+        settings.saveProfile(currentProfileName);
 
         setCallUiState(true);
         lblCallStatus.setText("Calling " + number + "...");

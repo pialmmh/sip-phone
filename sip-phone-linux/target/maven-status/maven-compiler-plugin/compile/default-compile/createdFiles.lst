@@ -6,5 +6,6 @@ com/telcobright/sipphone/linux/media/NativeMediaBridge$QualityListener.class
 com/telcobright/sipphone/linux/SipPhoneMain.class
 com/telcobright/sipphone/linux/media/PcmuAudioEngine.class
 com/telcobright/sipphone/linux/settings/AppSettings.class
+com/telcobright/sipphone/linux/settings/AppSettings$Meta.class
 com/telcobright/sipphone/linux/diag/RtpDiagnostic.class
 com/telcobright/sipphone/linux/media/NativeMediaBridge.class
