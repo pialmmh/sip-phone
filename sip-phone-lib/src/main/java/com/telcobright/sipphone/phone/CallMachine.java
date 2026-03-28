@@ -30,7 +30,7 @@ public class CallMachine {
     private final String routeId;
 
     /* Media handler — platform-specific */
-    private PhoneController.MediaHandler mediaHandler;
+    private MediaHandler mediaHandler;
 
     /* Current call state */
     private volatile State state = State.IDLE;
@@ -57,7 +57,7 @@ public class CallMachine {
         bus.subscribe(SignalingResult.class, this::onSignalingResult);
     }
 
-    public void setMediaHandler(PhoneController.MediaHandler handler) {
+    public void setMediaHandler(MediaHandler handler) {
         this.mediaHandler = handler;
     }
 

@@ -73,6 +73,9 @@ public class PhoneEngine {
         /* Call machine */
         callMachine = new CallMachine(bus, callRouter, ROUTE_ID, localIp, localRtpPort);
 
+        /* Call logger */
+        new CallLogger(bus);
+
         /* UI state machine */
         uiSm = new UiStateMachine(bus);
         uiSm.init();
@@ -90,7 +93,7 @@ public class PhoneEngine {
     public int getLocalRtpPort() { return localRtpPort; }
     public String getLocalIp() { return localIp; }
 
-    public void setMediaHandler(PhoneController.MediaHandler handler) {
+    public void setMediaHandler(MediaHandler handler) {
         callMachine.setMediaHandler(handler);
     }
 

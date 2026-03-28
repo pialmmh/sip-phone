@@ -64,6 +64,7 @@ com/telcobright/sipphone/statemachine/TimeoutEvent.class
 com/telcobright/sipphone/phone/PhoneCommand$Dial.class
 com/telcobright/sipphone/protocol/VertoSignalingAdapter$1.class
 com/telcobright/sipphone/route/health/RouteConfig$Builder.class
+com/telcobright/sipphone/phone/MediaHandler.class
 com/telcobright/sipphone/bus/EventBus.class
 com/telcobright/sipphone/phone/PhoneCommand$SendDtmf.class
 com/telcobright/sipphone/statemachine/StateConfig.class
@@ -97,6 +98,7 @@ com/telcobright/sipphone/verto/VertoClient$1.class
 com/telcobright/sipphone/call/events/CallEvents$MediaUpdateEvent.class
 com/telcobright/sipphone/protocol/ProtocolType.class
 com/telcobright/sipphone/phone/CallRequest$Answer.class
+com/telcobright/sipphone/phone/CallLogger.class
 com/telcobright/sipphone/phone/RouteEvent$Disconnected.class
 com/telcobright/sipphone/phone/CallEvent$Failed.class
 com/telcobright/sipphone/statemachine/FluentBuilder$StateBuilder$TransitionBuilder.class

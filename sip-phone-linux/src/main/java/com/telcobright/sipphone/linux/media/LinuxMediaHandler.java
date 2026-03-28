@@ -1,7 +1,7 @@
 package com.telcobright.sipphone.linux.media;
 
 import com.telcobright.sipphone.media.PcmuRtpSession;
-import com.telcobright.sipphone.phone.PhoneController;
+import com.telcobright.sipphone.phone.MediaHandler;
 import com.telcobright.sipphone.verto.SdpBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -11,7 +11,7 @@ import java.util.Random;
 /**
  * Linux platform media handler — Java Sound audio + JNI for AMR.
  */
-public class LinuxMediaHandler implements PhoneController.MediaHandler {
+public class LinuxMediaHandler implements MediaHandler {
 
     private static final Logger log = LoggerFactory.getLogger(LinuxMediaHandler.class);
 
