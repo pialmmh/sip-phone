@@ -1,7 +1,9 @@
 package com.telcobright.sipphone.linux.media;
 
+import com.telcobright.sipphone.bus.EventBus;
 import com.telcobright.sipphone.media.PcmuRtpSession;
 import com.telcobright.sipphone.phone.MediaHandler;
+import com.telcobright.sipphone.phone.RtcpStatsEvent;
 import com.telcobright.sipphone.verto.SdpBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -15,10 +17,15 @@ public class LinuxMediaHandler implements MediaHandler {
 
     private static final Logger log = LoggerFactory.getLogger(LinuxMediaHandler.class);
 
+    private final EventBus bus;
     private PcmuRtpSession pcmuRtpSession;
     private PcmuAudioEngine pcmuAudioEngine;
     private NativeMediaBridge amrBridge;
     private AmrAudioEngine amrAudioEngine;
+
+    public LinuxMediaHandler(EventBus bus) {
+        this.bus = bus;
+    }
 
     @Override
     public void startMedia(String remoteIp, int remoteRtpPort, int remoteRtcpPort,
@@ -65,11 +72,17 @@ public class LinuxMediaHandler implements MediaHandler {
             int initialMode = (codecType == 1) ? 8 : 7;
 
             amrBridge = new NativeMediaBridge();
+
+            /* RTCP quality listener — publishes stats on event bus */
+            NativeMediaBridge.QualityListener rtcpListener = (packetLoss, jitter, rtt) -> {
+                bus.publish(new RtcpStatsEvent(packetLoss, jitter, rtt));
+            };
+
             boolean ok = amrBridge.nativeCreateRtpSession(
                     remoteIp, remoteRtpPort, remoteRtcpPort,
                     localRtpPort, localRtpPort + 1,
                     new Random().nextInt(), payloadType,
-                    codecType, initialMode, false, null);
+                    codecType, initialMode, false, rtcpListener);
 
             if (!ok) {
                 log.error("Failed to create native RTP session");
