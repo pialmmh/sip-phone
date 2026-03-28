@@ -23,37 +23,44 @@
 #define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
 
-/**
- * pjmedia RTP transport — uses pjmedia's adaptive jitter buffer and RTCP.
- * UDP sockets are managed by us (not pjmedia's transport layer).
- */
+/* Global pjlib init — called once */
+static int g_pj_initialized = 0;
+static pj_caching_pool g_cp;
+
+static int ensure_pj_init(void) {
+    if (g_pj_initialized) return 0;
+
+    pj_status_t status = pj_init();
+    if (status != PJ_SUCCESS) {
+        LOGE("pj_init failed: %d", status);
+        return -1;
+    }
+    pj_caching_pool_init(&g_cp, NULL, 1024 * 1024);
+    g_pj_initialized = 1;
+    LOGD("pjlib initialized");
+    return 0;
+}
 
 struct RtpTransport {
-    /* pjmedia components */
-    pj_caching_pool cp;
     pj_pool_t* pool;
-    pjmedia_jbuf* jbuf;            /* Adaptive jitter buffer */
-    pjmedia_rtp_session rtp_tx;    /* RTP session for sending */
-    pjmedia_rtp_session rtp_rx;    /* RTP session for receiving */
-    pjmedia_rtcp_session rtcp;     /* RTCP session */
+    pjmedia_jbuf* jbuf;
+    pjmedia_rtp_session rtp_tx;
+    pjmedia_rtp_session rtp_rx;
+    pjmedia_rtcp_session rtcp;
 
-    /* UDP sockets (we manage these, not pjmedia) */
     int rtp_socket;
     int rtcp_socket;
     struct sockaddr_in remote_rtp_addr;
     struct sockaddr_in remote_rtcp_addr;
 
-    /* Config */
     uint32_t ssrc;
     uint8_t payload_type;
     int sample_rate;
     int frame_samples;
-    int frame_seq;                  /* Jitter buffer frame sequence */
+    int frame_seq;
 
     rtp_quality_cb_t quality_cb;
     void* quality_user_data;
-
-    int pj_initialized;
 };
 
 static int create_udp_socket(int port) {
@@ -73,20 +80,24 @@ static int create_udp_socket(int port) {
 }
 
 static RtpTransport* pjmedia_be_create(const RtpTransportConfig* config) {
+    if (ensure_pj_init() != 0) return NULL;
+
+    /* Register this thread with pjlib if not already */
+    if (!pj_thread_is_registered()) {
+        static pj_thread_desc desc;
+        static pj_thread_t* thread;
+        pj_thread_register("pjmedia-rtp", desc, &thread);
+    }
+
     RtpTransport* t = (RtpTransport*)calloc(1, sizeof(RtpTransport));
     if (!t) return NULL;
 
-    /* Initialize pjlib */
-    pj_status_t status = pj_init();
-    if (status != PJ_SUCCESS) {
-        LOGE("pj_init failed: %d", status);
+    t->pool = pj_pool_create(&g_cp.factory, "rtp", 4096, 4096, NULL);
+    if (!t->pool) {
+        LOGE("Failed to create pj pool");
         free(t);
         return NULL;
     }
-    t->pj_initialized = 1;
-
-    pj_caching_pool_init(&t->cp, NULL, 1024 * 1024);
-    t->pool = pj_pool_create(&t->cp.factory, "rtp", 4096, 4096, NULL);
 
     t->ssrc = config->ssrc;
     t->payload_type = config->payload_type;
@@ -95,32 +106,28 @@ static RtpTransport* pjmedia_be_create(const RtpTransportConfig* config) {
     t->quality_cb = config->quality_cb;
     t->quality_user_data = config->quality_user_data;
 
-    /* Initialize pjmedia RTP sessions */
+    /* RTP sessions */
     pjmedia_rtp_session_init(&t->rtp_tx, config->payload_type, config->ssrc);
     pjmedia_rtp_session_init(&t->rtp_rx, config->payload_type, 0);
 
-    /* Initialize RTCP */
+    /* RTCP */
     pjmedia_rtcp_init(&t->rtcp, "rtcp", config->sample_rate / 1000,
-                       config->sample_rate * config->frame_size_ms / 1000,
-                       config->ssrc);
+                       t->frame_samples, config->ssrc);
 
-    /* Initialize adaptive jitter buffer
-     * pjmedia_jbuf: min_prefetch=2 frames (40ms), max_prefetch=10 frames (200ms) */
-    status = pjmedia_jbuf_create(t->pool, NULL,
-                                  t->frame_samples * 2,  /* frame size in bytes (16-bit PCM) — not used for raw frames */
-                                  config->frame_size_ms,   /* frame ptime */
-                                  10,                      /* max count */
-                                  &t->jbuf);
+    /* Adaptive jitter buffer */
+    pj_status_t status = pjmedia_jbuf_create(t->pool, NULL,
+                                              t->frame_samples * 2,
+                                              config->frame_size_ms,
+                                              10, &t->jbuf);
     if (status != PJ_SUCCESS) {
         LOGE("jbuf_create failed: %d", status);
         pj_pool_release(t->pool);
-        pj_caching_pool_destroy(&t->cp);
         free(t);
         return NULL;
     }
-    pjmedia_jbuf_set_adaptive(t->jbuf, 2, 4, 10);  /* min=2, init=4, max=10 frames */
+    pjmedia_jbuf_set_adaptive(t->jbuf, 2, 4, 10);
 
-    /* Create UDP sockets */
+    /* UDP sockets */
     t->rtp_socket = create_udp_socket(config->local_rtp_port);
     t->rtcp_socket = create_udp_socket(config->local_rtcp_port);
     if (t->rtp_socket < 0 || t->rtcp_socket < 0) {
@@ -129,7 +136,6 @@ static RtpTransport* pjmedia_be_create(const RtpTransportConfig* config) {
         if (t->rtcp_socket >= 0) close(t->rtcp_socket);
         pjmedia_jbuf_destroy(t->jbuf);
         pj_pool_release(t->pool);
-        pj_caching_pool_destroy(&t->cp);
         free(t);
         return NULL;
     }
@@ -142,7 +148,7 @@ static RtpTransport* pjmedia_be_create(const RtpTransportConfig* config) {
     t->remote_rtcp_addr.sin_port = htons(config->remote_rtcp_port);
     inet_pton(AF_INET, config->remote_host, &t->remote_rtcp_addr.sin_addr);
 
-    LOGD("pjmedia transport: local=%d -> %s:%d (jbuf adaptive 40-200ms)",
+    LOGD("pjmedia transport: local=%d -> %s:%d (jbuf adaptive)",
          config->local_rtp_port, config->remote_host, config->remote_rtp_port);
 
     return t;
@@ -154,27 +160,23 @@ static void pjmedia_be_destroy(RtpTransport* t) {
     if (t->rtcp_socket >= 0) close(t->rtcp_socket);
     if (t->jbuf) pjmedia_jbuf_destroy(t->jbuf);
     if (t->pool) pj_pool_release(t->pool);
-    pj_caching_pool_destroy(&t->cp);
-    if (t->pj_initialized) pj_shutdown();
+    /* Don't call pj_shutdown — global, reused across sessions */
     free(t);
 }
 
 static int pjmedia_be_send_payload(RtpTransport* t, const uint8_t* payload, int payload_len, int marker) {
     if (!t || !payload) return -1;
 
-    /* Build RTP header using pjmedia */
     const void* rtp_hdr;
     int rtp_hdr_len;
     pjmedia_rtp_encode_rtp(&t->rtp_tx, t->payload_type, marker,
                             payload_len, t->frame_samples,
                             &rtp_hdr, &rtp_hdr_len);
 
-    /* Assemble packet: header + payload */
     uint8_t packet[RTP_MAX_PACKET];
     memcpy(packet, rtp_hdr, rtp_hdr_len);
     memcpy(packet + rtp_hdr_len, payload, payload_len);
 
-    /* Update RTCP stats */
     pjmedia_rtcp_tx_rtp(&t->rtcp, payload_len);
 
     ssize_t sent = sendto(t->rtp_socket, packet, rtp_hdr_len + payload_len, 0,
@@ -186,13 +188,19 @@ static int pjmedia_be_send_payload(RtpTransport* t, const uint8_t* payload, int 
 static int pjmedia_be_recv_payload(RtpTransport* t, uint8_t* payload, int max_len) {
     if (!t || !payload) return 0;
 
+    /* Register thread if needed (recv may be called from different thread) */
+    if (!pj_thread_is_registered()) {
+        static pj_thread_desc recv_desc;
+        static pj_thread_t* recv_thread;
+        pj_thread_register("pjmedia-recv", recv_desc, &recv_thread);
+    }
+
     /* Read all available packets into jitter buffer */
     uint8_t packet[RTP_MAX_PACKET];
     while (1) {
         ssize_t received = recvfrom(t->rtp_socket, packet, sizeof(packet), 0, NULL, NULL);
         if (received <= 0) break;
 
-        /* Decode RTP header */
         const pjmedia_rtp_hdr* rtp_hdr;
         const void* rtp_payload;
         unsigned rtp_payload_len;
@@ -202,11 +210,9 @@ static int pjmedia_be_recv_payload(RtpTransport* t, uint8_t* payload, int max_le
                                                       &rtp_hdr, &rtp_payload, &rtp_payload_len);
         if (status != PJ_SUCCESS) continue;
 
-        /* Update RTCP receive stats */
         pjmedia_rtcp_rx_rtp(&t->rtcp, pj_ntohs(rtp_hdr->seq),
                              pj_ntohl(rtp_hdr->ts), rtp_payload_len);
 
-        /* Put into adaptive jitter buffer */
         pjmedia_jbuf_put_frame(t->jbuf, rtp_payload, rtp_payload_len, t->frame_seq++);
     }
 
@@ -220,7 +226,6 @@ static int pjmedia_be_recv_payload(RtpTransport* t, uint8_t* payload, int max_le
         return (int)frame_len;
     }
 
-    /* No frame or missing frame */
     return 0;
 }
 
@@ -237,7 +242,6 @@ static void pjmedia_be_send_rtcp(RtpTransport* t) {
                sizeof(t->remote_rtcp_addr));
     }
 
-    /* Also report quality metrics */
     if (t->quality_cb) {
         pjmedia_rtcp_stat *stat = &t->rtcp.stat;
 

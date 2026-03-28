@@ -60,8 +60,9 @@ RtpSession* rtp_session_create(const RtpSessionConfig* config) {
         }
     }
 
-    /* Select transport — use simple for now (pjmedia has init crash, TODO fix) */
-    s->transport_ops = rtp_transport_get_ops(RTP_TRANSPORT_SIMPLE);
+    /* Select transport — prefer pjmedia, fall back to simple */
+    s->transport_ops = rtp_transport_get_ops(RTP_TRANSPORT_PJMEDIA);
+    if (!s->transport_ops) s->transport_ops = rtp_transport_get_ops(RTP_TRANSPORT_SIMPLE);
     if (!s->transport_ops) {
         LOGE("No RTP transport backend available");
         if (s->amr_codec) amr_codec_destroy(s->amr_codec);
