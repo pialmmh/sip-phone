@@ -3,6 +3,7 @@ package com.telcobright.sipphone.phone;
 import com.telcobright.sipphone.protocol.ProtocolType;
 import com.telcobright.sipphone.protocol.RouteSignalingBridge;
 import com.telcobright.sipphone.protocol.SignalingAdapter;
+import com.telcobright.sipphone.protocol.SignalingBridge;
 import com.telcobright.sipphone.route.health.RouteHealthContext;
 import com.telcobright.sipphone.route.health.RouteHealthRegistry;
 import org.slf4j.Logger;
@@ -73,5 +74,28 @@ public class CallRouter {
      */
     public boolean isRouteAvailable(String routeId) {
         return routeRegistry.isAvailable(routeId);
+    }
+
+    /**
+     * Get a SignalingBridge for a route (new event-driven interface).
+     * Used by CallMachine.
+     */
+    public SignalingBridge getBridgeForRoute(String routeId) {
+        if (!routeRegistry.isAvailable(routeId)) {
+            log.debug("Route {} not available", routeId);
+            return null;
+        }
+
+        RouteHealthContext ctx = routeRegistry.getRouteContext(routeId);
+        if (ctx == null) return null;
+
+        ProtocolType protocol = ProtocolType.valueOf(ctx.getProtocolName().toUpperCase());
+        RouteSignalingBridge bridge = bridges.get(protocol);
+        if (bridge == null) {
+            log.error("No signaling bridge for protocol: {}", protocol);
+            return null;
+        }
+
+        return bridge.createBridge(ctx);
     }
 }

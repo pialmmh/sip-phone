@@ -26,6 +26,14 @@ public interface RouteSignalingBridge {
     SignalingAdapter createSignalingAdapter(RouteHealthContext ctx);
 
     /**
+     * Create an event-driven SignalingBridge from a connected route's context.
+     * Used by CallMachine (new async architecture).
+     *
+     * @return SignalingBridge or null if context doesn't have the required client
+     */
+    SignalingBridge createBridge(RouteHealthContext ctx);
+
+    /**
      * Get the protocol type this bridge handles.
      */
     ProtocolType getProtocolType();

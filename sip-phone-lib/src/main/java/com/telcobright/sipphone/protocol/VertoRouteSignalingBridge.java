@@ -24,6 +24,13 @@ public class VertoRouteSignalingBridge implements RouteSignalingBridge {
     }
 
     @Override
+    public SignalingBridge createBridge(RouteHealthContext ctx) {
+        VertoClient client = ctx.getAttribute("vertoClient");
+        if (client == null) return null;
+        return new VertoSignalingBridge(client);
+    }
+
+    @Override
     public ProtocolType getProtocolType() {
         return ProtocolType.VERTO;
     }
