@@ -15,7 +15,6 @@ void jitter_buffer_put(JitterBuffer* jb, uint16_t seq, uint32_t timestamp,
                        const uint8_t* data, int data_len) {
     if (!jb || !data || data_len <= 0 || data_len > 256) return;
 
-    /* Find slot by sequence modulo */
     int slot = seq % JITTER_BUFFER_MAX_PACKETS;
     JitterBufferEntry* entry = &jb->entries[slot];
 
@@ -26,7 +25,10 @@ void jitter_buffer_put(JitterBuffer* jb, uint16_t seq, uint32_t timestamp,
     entry->used = 0;
 
     if (!jb->started) {
-        jb->last_played_ts = timestamp - (jb->current_delay_ms * jb->sample_rate / 1000);
+        /* Start playback after buffering min_delay worth of frames */
+        int buffer_frames = (jb->min_delay_ms / 20);
+        if (buffer_frames < 1) buffer_frames = 1;
+        jb->last_played_ts = seq - buffer_frames;
         jb->started = 1;
     }
 }
@@ -34,24 +36,23 @@ void jitter_buffer_put(JitterBuffer* jb, uint16_t seq, uint32_t timestamp,
 int jitter_buffer_get(JitterBuffer* jb, uint8_t* data, int* data_len) {
     if (!jb || !data || !data_len) return 0;
 
-    /* Advance play cursor by one frame (20ms) */
-    uint32_t frame_samples = jb->sample_rate / 50; /* 20ms */
-    uint32_t target_ts = jb->last_played_ts + frame_samples;
+    /* Advance play cursor by one sequence number */
+    uint16_t target_seq = (uint16_t)(jb->last_played_ts + 1);
 
-    /* Search for matching frame */
-    for (int i = 0; i < JITTER_BUFFER_MAX_PACKETS; i++) {
-        JitterBufferEntry* entry = &jb->entries[i];
-        if (entry->data_len > 0 && !entry->used && entry->timestamp == target_ts) {
-            memcpy(data, entry->data, entry->data_len);
-            *data_len = entry->data_len;
-            entry->used = 1;
-            jb->last_played_ts = target_ts;
-            return 1;
-        }
+    /* Search for matching frame by sequence number */
+    int slot = target_seq % JITTER_BUFFER_MAX_PACKETS;
+    JitterBufferEntry* entry = &jb->entries[slot];
+
+    if (entry->data_len > 0 && !entry->used && entry->sequence == target_seq) {
+        memcpy(data, entry->data, entry->data_len);
+        *data_len = entry->data_len;
+        entry->used = 1;
+        jb->last_played_ts = target_seq;
+        return 1;
     }
 
-    /* No frame found — advance cursor anyway (PLC/silence will be applied) */
-    jb->last_played_ts = target_ts;
+    /* No frame found — advance cursor, return silence */
+    jb->last_played_ts = target_seq;
     *data_len = 0;
     return 0;
 }
