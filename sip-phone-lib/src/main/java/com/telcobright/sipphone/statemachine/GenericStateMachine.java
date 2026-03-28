@@ -135,6 +135,11 @@ public class GenericStateMachine<TPersistingEntity, TContext> {
                     return;
                 }
             }
+            log.debug("[{}] No stay match in {} for {} (event class={}, registered={})",
+                    id, currentState, event.getEventType(), event.getClass().getName(),
+                    stateStays.keySet().stream().map(Class::getName).toList());
+        } else {
+            log.debug("[{}] No stay actions registered for state {}", id, currentState);
         }
 
         log.debug("[{}] Event {} ignored in state {}", id, event.getEventType(), currentState);
@@ -181,18 +186,18 @@ public class GenericStateMachine<TPersistingEntity, TContext> {
         executeExitAction(fromState);
         currentState = toState;
 
-        if (onStateTransition != null) {
-            onStateTransition.accept(fromState, toState, event);
-        }
-
         StateConfig config = stateConfigs.get(toState);
         if (config != null && config.isFinal()) {
             completed = true;
             log.debug("[{}] Reached final state: {}", id, toState);
             executeEntryAction(toState);
+            /* Notify AFTER entry action so listeners see final state */
+            if (onStateTransition != null) onStateTransition.accept(fromState, toState, event);
             if (onTerminated != null) onTerminated.accept(id);
         } else {
             executeEntryAction(toState);
+            /* Notify AFTER entry action so listeners see updated context (e.g. status=UP) */
+            if (onStateTransition != null) onStateTransition.accept(fromState, toState, event);
             scheduleTimeout(toState);
         }
     }

@@ -162,13 +162,29 @@ public class PhoneEngine {
         bus.publish(new RouteEvent.Disconnected(ROUTE_ID, "User disconnect"));
     }
 
+    private volatile boolean wasEverUp = false;
+
     private void onRouteStatusChanged(String routeId, RouteStatus status) {
         if (!ROUTE_ID.equals(routeId)) return;
 
         switch (status) {
-            case UP -> bus.publish(new RouteEvent.Registered(routeId));
-            case DOWN -> bus.publish(new RouteEvent.Disconnected(routeId, "Route down"));
-            case SUSPENDED -> bus.publish(new RouteEvent.Disconnected(routeId, "Suspended"));
+            case UP -> {
+                wasEverUp = true;
+                bus.publish(new RouteEvent.Registered(routeId));
+            }
+            case DOWN -> {
+                /* Only publish disconnect if we were previously UP.
+                 * During initial CONNECTING, status is DOWN but that's expected. */
+                if (wasEverUp) {
+                    wasEverUp = false;
+                    bus.publish(new RouteEvent.Disconnected(routeId, "Route down"));
+                }
+                /* Otherwise still CONNECTING — UiAction.Register already published RouteEvent.Connecting */
+            }
+            case SUSPENDED -> {
+                wasEverUp = false;
+                bus.publish(new RouteEvent.Disconnected(routeId, "Suspended"));
+            }
             default -> {}
         }
     }

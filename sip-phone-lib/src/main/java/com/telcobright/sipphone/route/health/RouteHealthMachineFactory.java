@@ -77,7 +77,7 @@ public class RouteHealthMachineFactory {
                     ScheduledFuture<?> timeoutFuture = scheduler.schedule(() -> {
                         if (!"CONNECTING".equals(machine.getCurrentState())) return;
                         LOG.warn("[RouteHealth-{}] Connect timeout ({}ms)", routeId, ctx.getConnectTimeoutMs());
-                        machine.fire(new RouteHealthEvent(RouteHealthEventType.CONNECT_FAILED, "Connect timeout"));
+                        machine.transitionTo("DISCONNECTED");
                     }, ctx.getConnectTimeoutMs(), TimeUnit.MILLISECONDS);
                     ctx.storeTimer(TIMER_CONNECT_TIMEOUT, timeoutFuture);
 
@@ -89,18 +89,33 @@ public class RouteHealthMachineFactory {
 
                         if (error != null) {
                             LOG.warn("[RouteHealth-{}] Connect error: {}", routeId, error.getMessage());
-                            machine.fire(new RouteHealthEvent(RouteHealthEventType.CONNECT_FAILED, error.getMessage()));
+                            machine.transitionTo("DISCONNECTED");
                         } else if (Boolean.TRUE.equals(success)) {
-                            machine.fire(new RouteHealthEvent(RouteHealthEventType.CONNECTED));
+                            LOG.info("[RouteHealth-{}] Connect succeeded → CONNECTED", routeId);
+                            machine.transitionTo("CONNECTED");
                         } else {
-                            machine.fire(new RouteHealthEvent(RouteHealthEventType.CONNECT_FAILED, "Connect returned false"));
+                            LOG.warn("[RouteHealth-{}] Connect returned false", routeId);
+                            machine.transitionTo("DISCONNECTED");
                         }
                     });
 
                   } catch (Throwable e) {
                     LOG.error("[RouteHealth-{}] Exception in CONNECTING entry", machine.getId(), e);
-                    machine.fire(new RouteHealthEvent(RouteHealthEventType.CONNECT_FAILED, e.getMessage()));
+                    machine.transitionTo("DISCONNECTED");
                   }
+                })
+                .stay(RouteHealthEvent.class, (machine, rawEvent) -> {
+                    RouteHealthEvent event = (RouteHealthEvent) rawEvent;
+                    switch (event.getType()) {
+                        case CONNECTED:
+                            machine.transitionTo("CONNECTED");
+                            break;
+                        case CONNECT_FAILED:
+                            machine.transitionTo("DISCONNECTED");
+                            break;
+                        default:
+                            break;
+                    }
                 })
             .done()
 
