@@ -45,6 +45,7 @@ com/telcobright/sipphone/call/CallData$CallDirection.class
 com/telcobright/sipphone/route/health/RouteConnectionHandler.class
 com/telcobright/sipphone/media/RtpPacket.class
 com/telcobright/sipphone/protocol/SignalingResult.class
+com/telcobright/sipphone/phone/RtcpStatsEvent.class
 com/telcobright/sipphone/protocol/RouteSignalingBridge.class
 com/telcobright/sipphone/phone/RouteEvent$Registered.class
 com/telcobright/sipphone/route/health/RouteHealthMachineFactory.class

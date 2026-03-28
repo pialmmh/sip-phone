@@ -11,6 +11,11 @@
 extern "C" {
 #endif
 
+/* Codec type: -1 = PCMU, 0 = AMR-NB, 1 = AMR-WB */
+#define CODEC_TYPE_PCMU  (-1)
+#define CODEC_TYPE_AMR_NB  AMR_CODEC_NB   /* 0 */
+#define CODEC_TYPE_AMR_WB  AMR_CODEC_WB   /* 1 */
+
 typedef struct RtpSession RtpSession;
 
 typedef struct {
@@ -21,65 +26,23 @@ typedef struct {
     int           local_rtcp_port;
     uint32_t      ssrc;
     uint8_t       payload_type;
-    AmrCodecType  codec_type;       /* AMR_CODEC_NB or AMR_CODEC_WB */
-    int           initial_mode;     /* Initial AMR mode */
-    int           dtx;              /* Enable DTX */
+    int           codec_type;          /* CODEC_TYPE_PCMU, CODEC_TYPE_AMR_NB, CODEC_TYPE_AMR_WB */
+    int           initial_mode;        /* AMR mode (ignored for PCMU) */
+    int           dtx;
     rtcp_quality_callback_t quality_callback;
     void*         quality_user_data;
 } RtpSessionConfig;
 
-/**
- * Create and bind an RTP session.
- */
 RtpSession* rtp_session_create(const RtpSessionConfig* config);
-
-/**
- * Destroy RTP session and close sockets.
- */
 void rtp_session_destroy(RtpSession* session);
 
-/**
- * Send one 20ms PCM frame — encodes to AMR and sends as RTP.
- * @param pcm      PCM samples (160 for NB, 320 for WB)
- * @param cmr      Codec Mode Request to send to remote (-1 = no request)
- * @return 0 on success, -1 on error
- */
 int rtp_session_send_frame(RtpSession* session, const int16_t* pcm, int cmr);
+int rtp_session_receive_frame(RtpSession* session, int16_t* pcm_out, int* cmr_received);
 
-/**
- * Receive and decode one RTP packet.
- * Uses jitter buffer internally.
- *
- * @param pcm_out       Output PCM buffer
- * @param cmr_received  [out] CMR value from remote, or -1 if none
- * @return number of PCM samples, or 0 if no frame available
- */
-int rtp_session_receive_frame(RtpSession* session, int16_t* pcm_out,
-                              int* cmr_received);
-
-/**
- * Process any pending RTCP packets (call periodically).
- */
 void rtp_session_process_rtcp(RtpSession* session);
-
-/**
- * Send RTCP reports (call every ~5 seconds).
- */
 void rtp_session_send_rtcp(RtpSession* session);
-
-/**
- * Change the encoding AMR mode (for adaptive bitrate).
- */
 void rtp_session_set_mode(RtpSession* session, int mode);
-
-/**
- * Get current encoding mode.
- */
-int rtp_session_get_mode(const RtpSession* session);
-
-/**
- * Get the latest RTCP quality metrics.
- */
+int  rtp_session_get_mode(const RtpSession* session);
 RtcpQualityMetrics rtp_session_get_quality(const RtpSession* session);
 
 #ifdef __cplusplus

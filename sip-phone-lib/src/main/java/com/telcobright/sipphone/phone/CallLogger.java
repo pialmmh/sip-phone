@@ -41,6 +41,7 @@ public class CallLogger {
         bus.subscribe(CallEvent.class, this::onCallEvent);
         bus.subscribe(SignalingResult.class, this::onSignalingResult);
         bus.subscribe(RouteEvent.class, this::onRouteEvent);
+        bus.subscribe(RtcpStatsEvent.class, this::onRtcpStats);
     }
 
     private void onCallEvent(CallEvent event) {
@@ -80,11 +81,11 @@ public class CallLogger {
     }
 
     /**
-     * Log RTCP quality stats (called periodically by media handler).
+     * Log RTCP quality stats from event bus.
      */
-    public void logRtcpStats(String callId, float packetLoss, float jitter, float rtt) {
-        String line = String.format("RTCP callId=%s loss=%.1f%% jitter=%.1fms rtt=%.1fms",
-                callId, packetLoss, jitter, rtt);
+    private void onRtcpStats(RtcpStatsEvent e) {
+        String line = String.format("RTCP loss=%.1f%% jitter=%.1fms rtt=%.1fms",
+                e.packetLossPercent(), e.jitterMs(), e.rttMs());
         writeRtcpLog(line);
     }
 

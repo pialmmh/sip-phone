@@ -1,27 +1,29 @@
 package com.telcobright.sipphone.linux.media;
 
 import com.telcobright.sipphone.bus.EventBus;
-import com.telcobright.sipphone.media.PcmuRtpSession;
 import com.telcobright.sipphone.phone.MediaHandler;
 import com.telcobright.sipphone.phone.RtcpStatsEvent;
-import com.telcobright.sipphone.verto.SdpBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Random;
 
 /**
- * Linux platform media handler — Java Sound audio + JNI for AMR.
+ * Linux media handler — ALL codecs go through native pjmedia transport.
+ *
+ * PCMU: native mu-law encode/decode + pjmedia RTP/RTCP
+ * AMR:  native OpenCORE-AMR encode/decode + pjmedia RTP/RTCP
+ *
+ * Audio I/O: Java Sound (AmrAudioEngine works for all codecs —
+ * it just sends/receives PCM frames via JNI).
  */
 public class LinuxMediaHandler implements MediaHandler {
 
     private static final Logger log = LoggerFactory.getLogger(LinuxMediaHandler.class);
 
     private final EventBus bus;
-    private PcmuRtpSession pcmuRtpSession;
-    private PcmuAudioEngine pcmuAudioEngine;
-    private NativeMediaBridge amrBridge;
-    private AmrAudioEngine amrAudioEngine;
+    private NativeMediaBridge bridge;
+    private AmrAudioEngine audioEngine;  // Works for both AMR and PCMU (sends/receives PCM)
 
     public LinuxMediaHandler(EventBus bus) {
         this.bus = bus;
@@ -30,70 +32,48 @@ public class LinuxMediaHandler implements MediaHandler {
     @Override
     public void startMedia(String remoteIp, int remoteRtpPort, int remoteRtcpPort,
                            int localRtpPort, int payloadType, int codecType, String codecName) {
-        log.info("Starting media: codec={}, remote={}:{}, local={}", codecName, remoteIp, remoteRtpPort, localRtpPort);
+        log.info("Starting media: codec={} (type={}), remote={}:{}, local={}",
+                 codecName, codecType, remoteIp, remoteRtpPort, localRtpPort);
 
-        if (SdpBuilder.CODEC_PCMU.equals(codecName)) {
-            startPcmu(remoteIp, remoteRtpPort, localRtpPort);
-        } else {
-            startAmr(remoteIp, remoteRtpPort, remoteRtcpPort, localRtpPort, payloadType, codecType);
-        }
-    }
-
-    @Override
-    public void stopMedia() {
-        if (pcmuAudioEngine != null) { pcmuAudioEngine.stop(); pcmuAudioEngine = null; }
-        if (pcmuRtpSession != null) { pcmuRtpSession.stop(); pcmuRtpSession = null; }
-        if (amrAudioEngine != null) { amrAudioEngine.stop(); amrAudioEngine = null; }
-        if (amrBridge != null) { amrBridge.nativeDestroyRtpSession(); amrBridge = null; }
-    }
-
-    @Override
-    public void setMuted(boolean muted) {
-        if (pcmuAudioEngine != null) pcmuAudioEngine.setMuted(muted);
-        if (amrAudioEngine != null) amrAudioEngine.setMuted(muted);
-    }
-
-    private void startPcmu(String remoteIp, int remoteRtpPort, int localRtpPort) {
         try {
-            pcmuRtpSession = new PcmuRtpSession(remoteIp, remoteRtpPort, localRtpPort);
-            pcmuAudioEngine = new PcmuAudioEngine(pcmuRtpSession);
-            pcmuRtpSession.start();
-            pcmuAudioEngine.start();
-            log.info("PCMU media active");
-        } catch (Exception e) {
-            log.error("PCMU start failed: {}", e.getMessage(), e);
-        }
-    }
+            /* All codecs: PCMU (type=-1), AMR-NB (type=0), AMR-WB (type=1) */
+            int sampleRate = (codecType == 1) ? 16000 : 8000;  // AMR-WB=16kHz, rest=8kHz
+            int initialMode = (codecType == 1) ? 8 : 7;        // Ignored for PCMU
 
-    private void startAmr(String remoteIp, int remoteRtpPort, int remoteRtcpPort,
-                          int localRtpPort, int payloadType, int codecType) {
-        try {
-            int sampleRate = (codecType == 1) ? 16000 : 8000;
-            int initialMode = (codecType == 1) ? 8 : 7;
-
-            amrBridge = new NativeMediaBridge();
-
-            /* RTCP quality listener — publishes stats on event bus */
+            /* RTCP quality listener → event bus */
             NativeMediaBridge.QualityListener rtcpListener = (packetLoss, jitter, rtt) -> {
                 bus.publish(new RtcpStatsEvent(packetLoss, jitter, rtt));
             };
 
-            boolean ok = amrBridge.nativeCreateRtpSession(
+            bridge = new NativeMediaBridge();
+            boolean ok = bridge.nativeCreateRtpSession(
                     remoteIp, remoteRtpPort, remoteRtcpPort,
                     localRtpPort, localRtpPort + 1,
                     new Random().nextInt(), payloadType,
                     codecType, initialMode, false, rtcpListener);
 
             if (!ok) {
-                log.error("Failed to create native RTP session");
+                log.error("Failed to create native RTP session for {}", codecName);
                 return;
             }
 
-            amrAudioEngine = new AmrAudioEngine(amrBridge, sampleRate);
-            amrAudioEngine.start();
-            log.info("AMR media active (type={})", codecType == 1 ? "WB" : "NB");
+            audioEngine = new AmrAudioEngine(bridge, sampleRate);
+            audioEngine.start();
+            log.info("{} media active via pjmedia transport", codecName);
+
         } catch (Exception e) {
-            log.error("AMR start failed: {}", e.getMessage(), e);
+            log.error("Media start failed: {}", e.getMessage(), e);
         }
+    }
+
+    @Override
+    public void stopMedia() {
+        if (audioEngine != null) { audioEngine.stop(); audioEngine = null; }
+        if (bridge != null) { bridge.nativeDestroyRtpSession(); bridge = null; }
+    }
+
+    @Override
+    public void setMuted(boolean muted) {
+        if (audioEngine != null) audioEngine.setMuted(muted);
     }
 }

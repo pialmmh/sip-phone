@@ -46,7 +46,7 @@ public class SipPhoneFrame extends JFrame {
 
         /* Engine */
         engine = new PhoneEngine();
-        engine.setMediaHandler(new LinuxMediaHandler());
+        engine.setMediaHandler(new LinuxMediaHandler(engine.getBus()));
         engine.start();
 
         uiSm = engine.getUiStateMachine();
