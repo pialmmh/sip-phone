@@ -1,7 +1,9 @@
 package com.telcobright.sipphone.phone;
 
-import com.telcobright.sipphone.protocol.SignalingAdapter;
-import com.telcobright.sipphone.protocol.VertoSignalingAdapter;
+import com.telcobright.sipphone.protocol.*;
+import com.telcobright.sipphone.route.RouteStatus;
+import com.telcobright.sipphone.route.health.*;
+import com.telcobright.sipphone.route.health.impl.VertoRouteConnectionHandler;
 import com.telcobright.sipphone.verto.SdpBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -10,72 +12,75 @@ import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.util.List;
 import java.util.Random;
-import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.*;
 import java.util.function.Consumer;
 
 /**
- * Phone controller — the single entry point for UI.
+ * Phone controller — single entry point for UI.
  *
- * UI sends PhoneCommand → controller dispatches to signaling adapter + media.
- * Controller fires PhoneState changes → UI subscribes and updates display.
+ * Architecture:
+ *   UI → PhoneCommand → PhoneController
+ *                          ├── RouteHealthRegistry (connection + registration lifecycle)
+ *                          ├── CallRouter (selects protocol for call via RouteSignalingBridge)
+ *                          └── MediaHandler (platform-specific audio)
+ *   UI ← PhoneState ← PhoneController
  *
- * Decoupled layers:
- *   UI → PhoneCommand → PhoneController → SignalingAdapter (Verto/SIP)
- *   UI ← PhoneState  ← PhoneController ← SignalingAdapter events
+ * Route UP = WebSocket/TCP connected AND protocol registration succeeded.
+ * Route DOWN = connection lost OR registration failed → auto-reconnect.
+ *
+ * Protocol-agnostic: PhoneController never references VertoClient directly.
+ * The CallRouter + RouteSignalingBridge handle protocol selection.
  */
-public class PhoneController implements SignalingAdapter.SignalingListener {
+public class PhoneController {
 
     private static final Logger log = LoggerFactory.getLogger(PhoneController.class);
+    private static final String ROUTE_ID = "primary";
 
     private final PhoneState state = new PhoneState();
     private final List<Consumer<PhoneState>> stateListeners = new CopyOnWriteArrayList<>();
 
+    /* Route health */
+    private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(2, r -> {
+        Thread t = new Thread(r, "phone-sched"); t.setDaemon(true); return t;
+    });
+    private final RouteHealthRegistry routeRegistry;
+    private final CallRouter callRouter;
+
+    /* Active call signaling (obtained from CallRouter when route is UP) */
     private SignalingAdapter signaling;
+    private final SignalingAdapter.SignalingListener callEventHandler = new CallEventHandler();
+
+    /* Media */
+    private MediaHandler mediaHandler;
     private int localRtpPort;
     private String localIp;
-
-    /* Media start/stop callbacks — platform-specific (Linux Java Sound / Android Oboe) */
-    private MediaHandler mediaHandler;
 
     public PhoneController() {
         allocatePorts();
         localIp = detectLocalIp();
+
+        routeRegistry = new RouteHealthRegistry(scheduler);
+        callRouter = new CallRouter(routeRegistry);
+
+        /* Register protocol handlers and bridges */
+        routeRegistry.registerHandler("VERTO", new VertoRouteConnectionHandler());
+        callRouter.registerBridge(new VertoRouteSignalingBridge());
+        // Future: routeRegistry.registerHandler("SIP", new SipRouteConnectionHandler());
+        // Future: callRouter.registerBridge(new SipRouteSignalingBridge());
+
+        /* Listen for route status changes */
+        routeRegistry.setRouteStatusListener(this::onRouteStatusChanged);
     }
 
-    /**
-     * Subscribe to state changes.
-     */
-    public void addStateListener(Consumer<PhoneState> listener) {
-        stateListeners.add(listener);
-    }
-
-    public void removeStateListener(Consumer<PhoneState> listener) {
-        stateListeners.remove(listener);
-    }
-
-    /**
-     * Set platform-specific media handler.
-     */
-    public void setMediaHandler(MediaHandler handler) {
-        this.mediaHandler = handler;
-    }
-
-    /**
-     * Get current state (read-only snapshot).
-     */
-    public PhoneState getState() {
-        return state;
-    }
-
+    public void addStateListener(Consumer<PhoneState> listener) { stateListeners.add(listener); }
+    public void removeStateListener(Consumer<PhoneState> listener) { stateListeners.remove(listener); }
+    public void setMediaHandler(MediaHandler handler) { this.mediaHandler = handler; }
+    public PhoneState getState() { return state; }
     public int getLocalRtpPort() { return localRtpPort; }
     public String getLocalIp() { return localIp; }
 
-    /**
-     * Process a command from the UI.
-     */
     public void execute(PhoneCommand command) {
         log.debug("Command: {}", command);
-
         switch (command) {
             case PhoneCommand.Register reg -> doRegister(reg);
             case PhoneCommand.Dial dial -> doDial(dial);
@@ -88,27 +93,102 @@ public class PhoneController implements SignalingAdapter.SignalingListener {
         }
     }
 
-    /* === Command handlers === */
+    /* === Register: creates route, route health manages lifecycle === */
 
     private void doRegister(PhoneCommand.Register reg) {
-        if (signaling != null) signaling.disconnect();
-
-        signaling = switch (reg.protocol().toUpperCase()) {
-            case "SIP" -> throw new UnsupportedOperationException("SIP adapter not yet implemented");
-            default -> new VertoSignalingAdapter();
-        };
-        signaling.setListener(this);
+        /* Clean up existing route */
+        if (routeRegistry.isRegistered(ROUTE_ID)) {
+            routeRegistry.suspendRoute(ROUTE_ID);
+            routeRegistry.unregisterRoute(ROUTE_ID);
+        }
+        signaling = null;
 
         state.setRegistration(PhoneState.Registration.CONNECTING);
         state.setRegistrationMessage("Connecting...");
         notifyListeners();
 
-        signaling.connect(reg.serverUrl(), reg.username(), reg.password());
+        /* Determine protocol from command */
+        String protocol = reg.protocol().toUpperCase();
+
+        /* Build route config — protocol-agnostic */
+        RouteConfig config = RouteConfig.builder(ROUTE_ID, reg.serverUrl(), protocol)
+                .routeName("Primary " + protocol)
+                .heartbeatMode(HeartbeatMode.PASSIVE)
+                .passiveHeartbeatExpectedIntervalMs(60_000)
+                .maxConsecutiveHeartbeatFailures(3)
+                .connectTimeoutMs(15_000)
+                .autoReconnect(true)
+                .reconnectBaseDelayMs(3_000)
+                .reconnectMaxDelayMs(30_000)
+                .protocolParam("userId", reg.username())
+                .protocolParam("password", reg.password())
+                .build();
+
+        routeRegistry.registerRoute(config);
+
+        /* Set call event listener on route context */
+        RouteHealthContext ctx = routeRegistry.getRouteContext(ROUTE_ID);
+        if (ctx != null) {
+            ctx.setAttribute("callListener", new VertoRouteConnectionHandler.VertoCallListener() {
+                @Override public void onIncomingCall(String callId, String callerNumber, String sdp) {
+                    callEventHandler.onIncomingCall(callId, callerNumber, sdp);
+                }
+                @Override public void onCallAnswered(String callId, String sdp) {
+                    callEventHandler.onCallAnswered(callId, sdp);
+                }
+                @Override public void onCallEnded(String callId, String reason) {
+                    callEventHandler.onCallEnded(callId, reason);
+                }
+                @Override public void onMediaUpdate(String callId, String sdp) {
+                    callEventHandler.onCallMedia(callId, sdp);
+                }
+                @Override public void onError(String error) {
+                    callEventHandler.onError(error);
+                }
+            });
+        }
+
+        routeRegistry.startRoute(ROUTE_ID);
     }
 
+    /* === Route status callback — protocol-agnostic === */
+
+    private void onRouteStatusChanged(String routeId, RouteStatus status) {
+        if (!ROUTE_ID.equals(routeId)) return;
+
+        if (status == RouteStatus.UP) {
+            /* Route UP = connected + registered. Get signaling via CallRouter. */
+            signaling = callRouter.getSignalingForRoute(ROUTE_ID);
+            if (signaling != null) {
+                signaling.setListener(callEventHandler);
+                state.setRegistration(PhoneState.Registration.REGISTERED);
+                state.setRegistrationMessage("Registered");
+                log.info("Route UP — signaling ready via {}", signaling.getProtocolName());
+            }
+            notifyListeners();
+        } else if (status == RouteStatus.DOWN) {
+            signaling = null;
+            state.setRegistration(PhoneState.Registration.CONNECTING);
+            state.setRegistrationMessage("Reconnecting...");
+            if (state.getCall() == PhoneState.Call.ANSWERED) {
+                stopMedia();
+                state.setCall(PhoneState.Call.ENDED);
+                state.setEndReason("Route disconnected");
+            }
+            notifyListeners();
+        } else if (status == RouteStatus.SUSPENDED) {
+            signaling = null;
+            state.setRegistration(PhoneState.Registration.DISCONNECTED);
+            state.setRegistrationMessage("Disconnected");
+            notifyListeners();
+        }
+    }
+
+    /* === Call commands === */
+
     private void doDial(PhoneCommand.Dial dial) {
-        if (signaling == null || !signaling.isRegistered()) {
-            log.warn("Cannot dial — not registered");
+        if (signaling == null || !callRouter.isRouteAvailable(ROUTE_ID)) {
+            log.warn("Cannot dial — route not available");
             return;
         }
 
@@ -133,8 +213,6 @@ public class PhoneController implements SignalingAdapter.SignalingListener {
         state.setEndReason("User hangup");
         state.setCallId("");
         notifyListeners();
-
-        /* Reset to IDLE after a moment */
         state.setCall(PhoneState.Call.IDLE);
     }
 
@@ -168,106 +246,73 @@ public class PhoneController implements SignalingAdapter.SignalingListener {
 
     private void doDisconnect() {
         doHangup();
-        if (signaling != null) {
-            signaling.disconnect();
-            signaling = null;
+        if (routeRegistry.isRegistered(ROUTE_ID)) {
+            routeRegistry.suspendRoute(ROUTE_ID);
         }
+        signaling = null;
         state.setRegistration(PhoneState.Registration.DISCONNECTED);
         state.setRegistrationMessage("Disconnected");
         notifyListeners();
     }
 
-    /* === SignalingAdapter.SignalingListener — protocol events === */
+    /* === Call event handler — receives events from protocol layer === */
 
-    @Override
-    public void onRegistered(String sessionId) {
-        state.setRegistration(PhoneState.Registration.REGISTERED);
-        state.setRegistrationMessage("Registered (session=" + sessionId + ")");
-        notifyListeners();
-    }
+    private class CallEventHandler implements SignalingAdapter.SignalingListener {
+        @Override public void onRegistered(String sessionId) { /* Handled by route health */ }
+        @Override public void onRegistrationFailed(String reason) { /* Handled by route health */ }
+        @Override public void onDisconnected(String reason) { /* Handled by route health */ }
 
-    @Override
-    public void onRegistrationFailed(String reason) {
-        state.setRegistration(PhoneState.Registration.FAILED);
-        state.setRegistrationMessage("Failed: " + reason);
-        notifyListeners();
-    }
+        @Override public void onIncomingCall(String callId, String callerNumber, String remoteSdp) {
+            state.setCallId(callId);
+            state.setRemoteNumber(callerNumber);
+            state.setPendingSdp(remoteSdp);
+            state.setCall(PhoneState.Call.INCOMING);
+            notifyListeners();
+        }
 
-    @Override
-    public void onDisconnected(String reason) {
-        state.setRegistration(PhoneState.Registration.DISCONNECTED);
-        state.setRegistrationMessage("Disconnected: " + reason);
-        if (state.getCall() == PhoneState.Call.ANSWERED) {
+        @Override public void onCallProgress(String callId) {
+            state.setCall(PhoneState.Call.RINGING);
+            notifyListeners();
+        }
+
+        @Override public void onCallMedia(String callId, String remoteSdp) {
+            if (state.getCall() == PhoneState.Call.ANSWERED) {
+                stopMedia();
+                startMedia(remoteSdp);
+            } else {
+                state.setPendingSdp(remoteSdp);
+                state.setCall(PhoneState.Call.RINGING);
+            }
+            notifyListeners();
+        }
+
+        @Override public void onCallAnswered(String callId, String remoteSdp) {
+            String sdp = (remoteSdp != null && !remoteSdp.isEmpty()) ? remoteSdp : state.getPendingSdp();
+            if (sdp != null && !sdp.isEmpty()) startMedia(sdp);
+            state.setCall(PhoneState.Call.ANSWERED);
+            state.setAnswerMs(System.currentTimeMillis());
+            notifyListeners();
+        }
+
+        @Override public void onCallEnded(String callId, String reason) {
             stopMedia();
             state.setCall(PhoneState.Call.ENDED);
-            state.setEndReason("Disconnected");
+            state.setEndReason(reason);
+            state.setCallId("");
+            notifyListeners();
         }
-        notifyListeners();
-    }
 
-    @Override
-    public void onIncomingCall(String callId, String callerNumber, String remoteSdp) {
-        state.setCallId(callId);
-        state.setRemoteNumber(callerNumber);
-        state.setPendingSdp(remoteSdp);
-        state.setCall(PhoneState.Call.INCOMING);
-        notifyListeners();
-    }
-
-    @Override
-    public void onCallProgress(String callId) {
-        state.setCall(PhoneState.Call.RINGING);
-        notifyListeners();
-    }
-
-    @Override
-    public void onCallMedia(String callId, String remoteSdp) {
-        if (state.getCall() == PhoneState.Call.ANSWERED) {
-            /* Mid-call re-INVITE */
-            stopMedia();
-            startMedia(remoteSdp);
-        } else {
-            /* Pre-answer SDP (verto.media before verto.answer) */
-            state.setPendingSdp(remoteSdp);
-            state.setCall(PhoneState.Call.RINGING);
+        @Override public void onError(String error) {
+            log.error("Signaling error: {}", error);
+            notifyListeners();
         }
-        notifyListeners();
-    }
-
-    @Override
-    public void onCallAnswered(String callId, String remoteSdp) {
-        String sdp = (remoteSdp != null && !remoteSdp.isEmpty()) ? remoteSdp : state.getPendingSdp();
-        if (sdp != null && !sdp.isEmpty()) {
-            startMedia(sdp);
-        }
-        state.setCall(PhoneState.Call.ANSWERED);
-        state.setAnswerMs(System.currentTimeMillis());
-        notifyListeners();
-    }
-
-    @Override
-    public void onCallEnded(String callId, String reason) {
-        stopMedia();
-        state.setCall(PhoneState.Call.ENDED);
-        state.setEndReason(reason);
-        state.setCallId("");
-        notifyListeners();
-    }
-
-    @Override
-    public void onError(String error) {
-        log.error("Signaling error: {}", error);
-        notifyListeners();
     }
 
     /* === Media === */
 
     private void startMedia(String remoteSdp) {
         SdpBuilder.SdpMediaInfo info = SdpBuilder.parseRemoteSdp(remoteSdp);
-        if (info == null) {
-            log.error("Cannot parse remote SDP");
-            return;
-        }
+        if (info == null) { log.error("Cannot parse remote SDP"); return; }
         state.setCodec(info.codecName());
         if (mediaHandler != null) {
             mediaHandler.startMedia(info.remoteIp(), info.remoteRtpPort(), info.remoteRtcpPort(),
@@ -280,27 +325,17 @@ public class PhoneController implements SignalingAdapter.SignalingListener {
     }
 
     private void notifyListeners() {
-        for (Consumer<PhoneState> listener : stateListeners) {
-            try {
-                listener.accept(state);
-            } catch (Exception e) {
-                log.error("State listener error", e);
-            }
+        for (Consumer<PhoneState> l : stateListeners) {
+            try { l.accept(state); } catch (Exception e) { log.error("Listener error", e); }
         }
     }
-
-    /* === Utility === */
 
     private void allocatePorts() {
         Random rng = new Random();
         for (int i = 0; i < 50; i++) {
             int port = 10000 + (rng.nextInt(10000) & 0xFFFE);
-            try {
-                new DatagramSocket(port).close();
-                new DatagramSocket(port + 1).close();
-                localRtpPort = port;
-                return;
-            } catch (Exception ignored) {}
+            try { new DatagramSocket(port).close(); new DatagramSocket(port+1).close(); localRtpPort = port; return; }
+            catch (Exception ignored) {}
         }
         localRtpPort = 10000;
     }
@@ -312,10 +347,6 @@ public class PhoneController implements SignalingAdapter.SignalingListener {
         } catch (Exception e) { return "0.0.0.0"; }
     }
 
-    /**
-     * Platform-specific media handler.
-     * Linux: Java Sound + JNI.  Android: Oboe + JNI.  iOS: Core Audio + C bridge.
-     */
     public interface MediaHandler {
         void startMedia(String remoteIp, int remoteRtpPort, int remoteRtcpPort,
                         int localRtpPort, int payloadType, int codecType, String codecName);

@@ -145,6 +145,14 @@ public class RouteHealthRegistry {
 
     private void startMachine(ManagedRoute managed) {
         try {
+            /* Listen for state transitions → notify route status changes */
+            String routeId = managed.config.getRouteId();
+            managed.machine.setOnStateTransition((from, to, event) -> {
+                RouteStatus status = managed.ctx.getStatus();
+                LOG.debug("[RouteHealthRegistry] {} {} → {} (status={})", routeId, from, to, status);
+                notifyRouteStatusChanged(routeId, status);
+            });
+
             managed.machine.start();
             managed.machine.transitionTo("CONNECTING");
             LOG.info("[RouteHealthRegistry] Route {} → CONNECTING", managed.config.getRouteId());
@@ -369,6 +377,50 @@ public class RouteHealthRegistry {
     public RouteHealthContext getRouteContext(String routeId) {
         ManagedRoute managed = routes.get(routeId);
         return managed != null ? managed.ctx : null;
+    }
+
+    // ==================== Route Status Listener ====================
+
+    private volatile RouteStatusListener routeStatusListener;
+
+    @FunctionalInterface
+    public interface RouteStatusListener {
+        void onRouteStatusChanged(String routeId, RouteStatus status);
+    }
+
+    public void setRouteStatusListener(RouteStatusListener listener) {
+        this.routeStatusListener = listener;
+    }
+
+    /** Called internally when route context status changes. */
+    void notifyRouteStatusChanged(String routeId, RouteStatus status) {
+        if (routeStatusListener != null) {
+            try {
+                routeStatusListener.onRouteStatusChanged(routeId, status);
+            } catch (Exception e) {
+                LOG.error("[RouteHealthRegistry] Status listener error for {}", routeId, e);
+            }
+        }
+    }
+
+    // ==================== Additional Route Management ====================
+
+    /**
+     * Check if a route is registered (regardless of status).
+     */
+    public boolean isRegistered(String routeId) {
+        return routes.containsKey(routeId);
+    }
+
+    /**
+     * Unregister a route. Stops the machine and removes it.
+     */
+    public void unregisterRoute(String routeId) {
+        ManagedRoute managed = routes.remove(routeId);
+        if (managed != null) {
+            stopMachine(managed);
+            LOG.info("[RouteHealthRegistry] Route unregistered: {}", routeId);
+        }
     }
 
     /**

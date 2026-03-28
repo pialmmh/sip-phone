@@ -33,6 +33,20 @@ public class VertoSignalingAdapter implements SignalingAdapter {
     private VertoClient vertoClient;
     private SignalingListener listener;
     private volatile boolean registered;
+    private boolean externalClient; // true if VertoClient is managed externally (by route health)
+
+    /** Default constructor — manages its own VertoClient. */
+    public VertoSignalingAdapter() {}
+
+    /**
+     * Constructor with externally-managed VertoClient (from route health).
+     * The adapter uses this client for signaling but doesn't own its lifecycle.
+     */
+    public VertoSignalingAdapter(VertoClient existingClient) {
+        this.vertoClient = existingClient;
+        this.externalClient = true;
+        this.registered = true;
+    }
 
     @Override
     public void setListener(SignalingListener listener) {
@@ -101,7 +115,7 @@ public class VertoSignalingAdapter implements SignalingAdapter {
 
     @Override
     public void disconnect() {
-        if (vertoClient != null) {
+        if (vertoClient != null && !externalClient) {
             vertoClient.disconnect();
             vertoClient = null;
         }
