@@ -16,6 +16,7 @@
 /home/mustafa/telcobright-projects/sip-phone/sip-phone-lib/src/main/java/com/telcobright/sipphone/protocol/ProtocolType.java
 /home/mustafa/telcobright-projects/sip-phone/sip-phone-lib/src/main/java/com/telcobright/sipphone/route/health/HeartbeatMode.java
 /home/mustafa/telcobright-projects/sip-phone/sip-phone-lib/src/main/java/com/telcobright/sipphone/route/health/RouteHealthRegistry.java
+/home/mustafa/telcobright-projects/sip-phone/sip-phone-lib/src/main/java/com/telcobright/sipphone/media/IceConfig.java
 /home/mustafa/telcobright-projects/sip-phone/sip-phone-lib/src/main/java/com/telcobright/sipphone/verto/VertoClient.java
 /home/mustafa/telcobright-projects/sip-phone/sip-phone-lib/src/main/java/com/telcobright/sipphone/protocol/SignalingBridge.java
 /home/mustafa/telcobright-projects/sip-phone/sip-phone-lib/src/main/java/com/telcobright/sipphone/protocol/VertoSignalingAdapter.java

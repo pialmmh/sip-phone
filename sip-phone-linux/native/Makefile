@@ -21,6 +21,8 @@ LIBS += -Llib/pjmedia \
         -luuid -lsrtp2
 
 SOURCES = src/jni/jni_bridge.c \
+          src/jni/jni_ice_bridge.c \
+          src/rtp/ice_transport.c \
           src/codec/pcmu_codec.c \
           src/amr/amr_codec.c \
           src/rtp/rtp_session.c \
