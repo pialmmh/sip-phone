@@ -22,6 +22,7 @@ com/telcobright/sipphone/phone/PhoneEngine$2.class
 com/telcobright/sipphone/protocol/SignalingResult$Failed.class
 com/telcobright/sipphone/phone/RouteEvent$Reconnecting.class
 com/telcobright/sipphone/phone/UiAction$SendDtmf.class
+com/telcobright/sipphone/phone/AdaptiveBitrateController.class
 com/telcobright/sipphone/phone/UiAction$Mute.class
 com/telcobright/sipphone/statemachine/FluentBuilder$TransitionDef.class
 com/telcobright/sipphone/phone/UiAction.class
@@ -85,6 +86,7 @@ com/telcobright/sipphone/statemachine/FluentBuilder$StayDef.class
 com/telcobright/sipphone/phone/PhoneState$Call.class
 com/telcobright/sipphone/protocol/VertoRouteSignalingBridge.class
 com/telcobright/sipphone/phone/CallRouter.class
+com/telcobright/sipphone/phone/AmrModeChangeEvent.class
 com/telcobright/sipphone/call/events/CallEvents$RegistrationFailedEvent.class
 com/telcobright/sipphone/phone/PhoneController$1.class
 com/telcobright/sipphone/phone/UiAction$Hangup.class

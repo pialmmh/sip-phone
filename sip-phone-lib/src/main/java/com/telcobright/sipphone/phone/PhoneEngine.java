@@ -76,6 +76,9 @@ public class PhoneEngine {
         /* Call logger */
         new CallLogger(bus);
 
+        /* Adaptive bitrate */
+        new AdaptiveBitrateController(bus);
+
         /* UI state machine */
         uiSm = new UiStateMachine(bus);
         uiSm.init();

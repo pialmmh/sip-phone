@@ -1,6 +1,7 @@
 package com.telcobright.sipphone.linux.media;
 
 import com.telcobright.sipphone.bus.EventBus;
+import com.telcobright.sipphone.phone.AmrModeChangeEvent;
 import com.telcobright.sipphone.phone.MediaHandler;
 import com.telcobright.sipphone.phone.RtcpStatsEvent;
 import org.slf4j.Logger;
@@ -27,6 +28,16 @@ public class LinuxMediaHandler implements MediaHandler {
 
     public LinuxMediaHandler(EventBus bus) {
         this.bus = bus;
+        /* Subscribe to AMR mode changes from adaptive bitrate controller */
+        bus.subscribe(AmrModeChangeEvent.class, this::onAmrModeChange);
+    }
+
+    private void onAmrModeChange(AmrModeChangeEvent event) {
+        if (bridge != null) {
+            bridge.nativeSetMode(event.mode());
+            log.info("AMR mode changed to {} (loss={}% jitter={}ms)",
+                     event.label(), event.triggerLoss(), event.triggerJitter());
+        }
     }
 
     @Override

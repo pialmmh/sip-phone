@@ -42,6 +42,7 @@ public class CallLogger {
         bus.subscribe(SignalingResult.class, this::onSignalingResult);
         bus.subscribe(RouteEvent.class, this::onRouteEvent);
         bus.subscribe(RtcpStatsEvent.class, this::onRtcpStats);
+        bus.subscribe(AmrModeChangeEvent.class, this::onAmrModeChange);
     }
 
     private void onCallEvent(CallEvent event) {
@@ -87,6 +88,11 @@ public class CallLogger {
         String line = String.format("RTCP loss=%.1f%% jitter=%.1fms rtt=%.1fms",
                 e.packetLossPercent(), e.jitterMs(), e.rttMs());
         writeRtcpLog(line);
+    }
+
+    private void onAmrModeChange(AmrModeChangeEvent e) {
+        writeCallLog(String.format("ABR mode=%s loss=%.1f%% jitter=%.1fms",
+                e.label(), e.triggerLoss(), e.triggerJitter()));
     }
 
     private void writeCallLog(String message) {

@@ -84,9 +84,9 @@ static RtpTransport* pjmedia_be_create(const RtpTransportConfig* config) {
 
     /* Register this thread with pjlib if not already */
     if (!pj_thread_is_registered()) {
-        static pj_thread_desc desc;
-        static pj_thread_t* thread;
-        pj_thread_register("pjmedia-rtp", desc, &thread);
+        pj_thread_desc *desc = calloc(1, sizeof(pj_thread_desc));
+        pj_thread_t* thread;
+        pj_thread_register("pjmedia-create", *desc, &thread);
     }
 
     RtpTransport* t = (RtpTransport*)calloc(1, sizeof(RtpTransport));
@@ -117,7 +117,7 @@ static RtpTransport* pjmedia_be_create(const RtpTransportConfig* config) {
     /* Adaptive jitter buffer */
     const pj_str_t jbuf_name = pj_str("jbuf");
     pj_status_t status = pjmedia_jbuf_create(t->pool, &jbuf_name,
-                                              t->frame_samples * 2,
+                                              256,  /* max payload size (AMR or PCMU) */
                                               config->frame_size_ms,
                                               10, &t->jbuf);
     if (status != PJ_SUCCESS) {
@@ -168,6 +168,13 @@ static void pjmedia_be_destroy(RtpTransport* t) {
 static int pjmedia_be_send_payload(RtpTransport* t, const uint8_t* payload, int payload_len, int marker) {
     if (!t || !payload) return -1;
 
+    /* Register thread if needed (send called from capture thread) */
+    if (!pj_thread_is_registered()) {
+        pj_thread_desc *sd = calloc(1, sizeof(pj_thread_desc));
+        pj_thread_t* st;
+        pj_thread_register("pjmedia-send", *sd, &st);
+    }
+
     const void* rtp_hdr;
     int rtp_hdr_len;
     pjmedia_rtp_encode_rtp(&t->rtp_tx, t->payload_type, marker,
@@ -189,11 +196,11 @@ static int pjmedia_be_send_payload(RtpTransport* t, const uint8_t* payload, int 
 static int pjmedia_be_recv_payload(RtpTransport* t, uint8_t* payload, int max_len) {
     if (!t || !payload) return 0;
 
-    /* Register thread if needed (recv may be called from different thread) */
+    /* Register thread if needed (recv called from playback thread) */
     if (!pj_thread_is_registered()) {
-        static pj_thread_desc recv_desc;
-        static pj_thread_t* recv_thread;
-        pj_thread_register("pjmedia-recv", recv_desc, &recv_thread);
+        pj_thread_desc *rd = calloc(1, sizeof(pj_thread_desc));
+        pj_thread_t* rt;
+        pj_thread_register("pjmedia-recv", *rd, &rt);
     }
 
     /* Read all available packets into jitter buffer */
