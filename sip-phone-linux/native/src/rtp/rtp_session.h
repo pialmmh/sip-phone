@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include "rtp_packet.h"
+#include "rtp_transport.h"
 #include "rtcp_handler.h"
 #include "jitter_buffer.h"
 #include "../amr/amr_codec.h"
@@ -29,7 +30,7 @@ typedef struct {
     int           codec_type;          /* CODEC_TYPE_PCMU, CODEC_TYPE_AMR_NB, CODEC_TYPE_AMR_WB */
     int           initial_mode;        /* AMR mode (ignored for PCMU) */
     int           dtx;
-    rtcp_quality_callback_t quality_callback;
+    rtp_quality_cb_t quality_callback;
     void*         quality_user_data;
 } RtpSessionConfig;
 

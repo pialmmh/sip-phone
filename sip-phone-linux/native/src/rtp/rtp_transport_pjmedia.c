@@ -115,7 +115,8 @@ static RtpTransport* pjmedia_be_create(const RtpTransportConfig* config) {
                        t->frame_samples, config->ssrc);
 
     /* Adaptive jitter buffer */
-    pj_status_t status = pjmedia_jbuf_create(t->pool, NULL,
+    const pj_str_t jbuf_name = pj_str("jbuf");
+    pj_status_t status = pjmedia_jbuf_create(t->pool, &jbuf_name,
                                               t->frame_samples * 2,
                                               config->frame_size_ms,
                                               10, &t->jbuf);
@@ -248,7 +249,8 @@ static void pjmedia_be_send_rtcp(RtpTransport* t) {
         RtpQualityMetrics m = {0};
         unsigned total = stat->rx.pkt + stat->rx.loss;
         m.packet_loss_percent = total > 0 ? (float)stat->rx.loss * 100.0f / total : 0;
-        m.jitter_ms = (float)stat->rx.jitter.mean / 1000.0f;
+        /* pjmedia jitter.mean is in timestamp units × 1000 (pj_math_stat uses usec) */
+        m.jitter_ms = (float)stat->rx.jitter.mean / 1000000.0f;
         m.rtt_ms = (float)stat->rtt.mean / 1000.0f;
 
         t->quality_cb(&m, t->quality_user_data);
@@ -262,7 +264,7 @@ static RtpQualityMetrics pjmedia_be_get_quality(const RtpTransport* t) {
     pjmedia_rtcp_stat *stat = &((RtpTransport*)t)->rtcp.stat;
     unsigned total = stat->rx.pkt + stat->rx.loss;
     m.packet_loss_percent = total > 0 ? (float)stat->rx.loss * 100.0f / total : 0;
-    m.jitter_ms = (float)stat->rx.jitter.mean / 1000.0f;
+    m.jitter_ms = (float)stat->rx.jitter.mean / 1000000.0f;
     m.rtt_ms = (float)stat->rtt.mean / 1000.0f;
 
     return m;

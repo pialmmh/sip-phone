@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "../rtp/rtp_session.h"
+#include "../rtp/rtp_transport.h"
 
 static RtpSession *g_rtp_session = NULL;
 
@@ -17,7 +18,7 @@ static JavaVM *g_jvm = NULL;
 static jobject g_quality_listener = NULL;
 static jmethodID g_on_quality_update = NULL;
 
-static void quality_callback(const RtcpQualityMetrics *metrics, void *user_data) {
+static void quality_callback(const RtpQualityMetrics *metrics, void *user_data) {
     (void)user_data;
     if (!g_jvm || !g_quality_listener) return;
 
