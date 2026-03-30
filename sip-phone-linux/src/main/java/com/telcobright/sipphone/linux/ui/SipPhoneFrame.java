@@ -38,6 +38,12 @@ public class SipPhoneFrame extends JFrame {
     private JToggleButton btnMute;
     private JLabel lblCallStatus, lblDuration;
 
+    /* Network panel */
+    private JCheckBox chkIceEnabled;
+    private JTextField tfStunServer;
+    private JComboBox<String> cbBindMode;
+    private JTextField tfBindAddress;
+
     private ScheduledExecutorService timerExecutor;
     private long callStartTime;
 
@@ -66,7 +72,7 @@ public class SipPhoneFrame extends JFrame {
 
     private void initUi() {
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        setSize(420, 500);
+        setSize(420, 580);
         setLocationRelativeTo(null);
         setResizable(false);
 
@@ -76,6 +82,8 @@ public class SipPhoneFrame extends JFrame {
         main.add(createRegistrationPanel());
         main.add(Box.createVerticalStrut(8));
         main.add(createCallPanel());
+        main.add(Box.createVerticalStrut(8));
+        main.add(createNetworkPanel());
         main.add(Box.createVerticalStrut(8));
         main.add(createStatusPanel());
         setContentPane(main);
@@ -172,6 +180,43 @@ public class SipPhoneFrame extends JFrame {
         return p;
     }
 
+    private JPanel createNetworkPanel() {
+        JPanel p = new JPanel(new GridBagLayout());
+        p.setBorder(new TitledBorder("Network"));
+        GridBagConstraints c = gbc();
+
+        /* ICE enabled */
+        c.gridx=0; c.gridy=0; c.weightx=0; c.gridwidth=1;
+        chkIceEnabled = new JCheckBox("ICE/STUN");
+        chkIceEnabled.addActionListener(e -> {
+            boolean on = chkIceEnabled.isSelected();
+            tfStunServer.setEnabled(on);
+        });
+        p.add(chkIceEnabled, c);
+
+        c.gridx=1; c.weightx=1; c.gridwidth=2;
+        tfStunServer = new JTextField(15);
+        tfStunServer.setEnabled(false);
+        p.add(tfStunServer, c);
+
+        /* Bind mode */
+        c.gridx=0; c.gridy=1; c.weightx=0; c.gridwidth=1;
+        p.add(new JLabel("Bind IP:"), c);
+        c.gridx=1; c.weightx=0; c.gridwidth=1;
+        cbBindMode = new JComboBox<>(new String[]{"Auto", "Specific"});
+        cbBindMode.addActionListener(e -> {
+            tfBindAddress.setEnabled("Specific".equals(cbBindMode.getSelectedItem()));
+        });
+        p.add(cbBindMode, c);
+
+        c.gridx=2; c.weightx=1;
+        tfBindAddress = new JTextField(12);
+        tfBindAddress.setEnabled(false);
+        p.add(tfBindAddress, c);
+
+        return p;
+    }
+
     private JPanel createStatusPanel() {
         JPanel p = new JPanel(new GridBagLayout());
         p.setBorder(new TitledBorder("Status"));
@@ -256,6 +301,13 @@ public class SipPhoneFrame extends JFrame {
         tfPassword.setText(settings.getPassword());
         cbCodec.setSelectedItem(settings.getPreferredCodec());
         tfPhoneNumber.setText(settings.getLastDialedNumber());
+        /* Network */
+        chkIceEnabled.setSelected(settings.isIceEnabled());
+        tfStunServer.setText(settings.getStunServer() + ":" + settings.getStunPort());
+        tfStunServer.setEnabled(settings.isIceEnabled());
+        cbBindMode.setSelectedItem("SPECIFIC".equals(settings.getBindMode()) ? "Specific" : "Auto");
+        tfBindAddress.setText(settings.getBindAddress());
+        tfBindAddress.setEnabled("SPECIFIC".equals(settings.getBindMode()));
         setTitle("SIP Phone — " + currentProfileName);
     }
 
@@ -264,6 +316,18 @@ public class SipPhoneFrame extends JFrame {
         settings.setUsername(tfUsername.getText().trim());
         settings.setPassword(new String(tfPassword.getPassword()));
         settings.setPreferredCodec((String)cbCodec.getSelectedItem());
+        /* Network */
+        settings.setIceEnabled(chkIceEnabled.isSelected());
+        String stunText = tfStunServer.getText().trim();
+        if (stunText.contains(":")) {
+            String[] parts = stunText.split(":");
+            settings.setStunServer(parts[0]);
+            try { settings.setStunPort(Integer.parseInt(parts[1])); } catch (Exception ignored) {}
+        } else if (!stunText.isEmpty()) {
+            settings.setStunServer(stunText);
+        }
+        settings.setBindMode("Specific".equals(cbBindMode.getSelectedItem()) ? "SPECIFIC" : "AUTO");
+        settings.setBindAddress(tfBindAddress.getText().trim());
         settings.saveProfile(currentProfileName);
         AppSettings.saveLastProfile(currentProfileName);
         lblRegStatus.setText("Settings saved"); lblRegStatus.setForeground(Color.BLUE);

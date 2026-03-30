@@ -15,6 +15,7 @@ com/telcobright/sipphone/call/events/CallEvents$DisconnectedEvent.class
 com/telcobright/sipphone/phone/PhoneCommand$Answer.class
 com/telcobright/sipphone/statemachine/GenericStateMachine$TriConsumer.class
 com/telcobright/sipphone/route/health/impl/VertoRouteConnectionHandler$1.class
+com/telcobright/sipphone/media/IceConfig$BindMode.class
 com/telcobright/sipphone/protocol/SignalingAdapter.class
 com/telcobright/sipphone/route/health/RouteConfig.class
 com/telcobright/sipphone/phone/PhoneEngine.class

@@ -33,6 +33,18 @@ public class AppSettings {
     private String preferredCodec = "PCMU";
     private String lastDialedNumber = "";
 
+    /* ICE/Network */
+    private boolean iceEnabled = false;
+    private String stunServer = "stun.l.google.com";
+    private int stunPort = 19302;
+    private boolean turnEnabled = false;
+    private String turnServer = "";
+    private int turnPort = 3478;
+    private String turnUsername = "";
+    private String turnPassword = "";
+    private String bindMode = "AUTO";       /* AUTO or SPECIFIC */
+    private String bindAddress = "";
+
     public String getServerUrl() { return serverUrl; }
     public void setServerUrl(String v) { this.serverUrl = v; }
 
@@ -47,6 +59,55 @@ public class AppSettings {
 
     public String getLastDialedNumber() { return lastDialedNumber; }
     public void setLastDialedNumber(String v) { this.lastDialedNumber = v; }
+
+    /* ICE/Network getters/setters */
+    public boolean isIceEnabled() { return iceEnabled; }
+    public void setIceEnabled(boolean v) { this.iceEnabled = v; }
+
+    public String getStunServer() { return stunServer; }
+    public void setStunServer(String v) { this.stunServer = v; }
+
+    public int getStunPort() { return stunPort; }
+    public void setStunPort(int v) { this.stunPort = v; }
+
+    public boolean isTurnEnabled() { return turnEnabled; }
+    public void setTurnEnabled(boolean v) { this.turnEnabled = v; }
+
+    public String getTurnServer() { return turnServer; }
+    public void setTurnServer(String v) { this.turnServer = v; }
+
+    public int getTurnPort() { return turnPort; }
+    public void setTurnPort(int v) { this.turnPort = v; }
+
+    public String getTurnUsername() { return turnUsername; }
+    public void setTurnUsername(String v) { this.turnUsername = v; }
+
+    public String getTurnPassword() { return turnPassword; }
+    public void setTurnPassword(String v) { this.turnPassword = v; }
+
+    public String getBindMode() { return bindMode; }
+    public void setBindMode(String v) { this.bindMode = v; }
+
+    public String getBindAddress() { return bindAddress; }
+    public void setBindAddress(String v) { this.bindAddress = v; }
+
+    /** Build IceConfig from settings */
+    public com.telcobright.sipphone.media.IceConfig toIceConfig() {
+        var c = new com.telcobright.sipphone.media.IceConfig();
+        c.setIceEnabled(iceEnabled);
+        c.setStunServer(stunServer);
+        c.setStunPort(stunPort);
+        c.setTurnEnabled(turnEnabled);
+        c.setTurnServer(turnServer);
+        c.setTurnPort(turnPort);
+        c.setTurnUsername(turnUsername);
+        c.setTurnPassword(turnPassword);
+        c.setBindMode("SPECIFIC".equals(bindMode)
+                ? com.telcobright.sipphone.media.IceConfig.BindMode.SPECIFIC
+                : com.telcobright.sipphone.media.IceConfig.BindMode.AUTO);
+        c.setBindAddress(bindAddress);
+        return c;
+    }
 
     /* === Profile I/O === */
 
