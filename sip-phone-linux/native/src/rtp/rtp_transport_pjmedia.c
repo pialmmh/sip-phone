@@ -23,9 +23,9 @@
 #define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
 
-/* Global pjlib init — called once */
-static int g_pj_initialized = 0;
-static pj_caching_pool g_cp;
+/* Global pjlib init — called once, shared with ice_transport.c */
+int g_pj_initialized = 0;
+pj_caching_pool g_cp;
 
 static int ensure_pj_init(void) {
     if (g_pj_initialized) return 0;

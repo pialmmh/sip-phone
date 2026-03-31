@@ -1,5 +1,6 @@
 /home/mustafa/telcobright-projects/sip-phone/sip-phone-lib/src/main/java/com/telcobright/sipphone/route/health/RouteHealthEventType.java
 /home/mustafa/telcobright-projects/sip-phone/sip-phone-lib/src/main/java/com/telcobright/sipphone/media/PcmuRtpSession.java
+/home/mustafa/telcobright-projects/sip-phone/sip-phone-lib/src/main/java/com/telcobright/sipphone/phone/CallRuntimeContext.java
 /home/mustafa/telcobright-projects/sip-phone/sip-phone-lib/src/main/java/com/telcobright/sipphone/phone/CallLogger.java
 /home/mustafa/telcobright-projects/sip-phone/sip-phone-lib/src/main/java/com/telcobright/sipphone/route/RouteStatus.java
 /home/mustafa/telcobright-projects/sip-phone/sip-phone-lib/src/main/java/com/telcobright/sipphone/route/health/RouteConfig.java
@@ -30,6 +31,7 @@
 /home/mustafa/telcobright-projects/sip-phone/sip-phone-lib/src/main/java/com/telcobright/sipphone/phone/UiViewModel.java
 /home/mustafa/telcobright-projects/sip-phone/sip-phone-lib/src/main/java/com/telcobright/sipphone/bus/EventBus.java
 /home/mustafa/telcobright-projects/sip-phone/sip-phone-lib/src/main/java/com/telcobright/sipphone/protocol/VertoSignalingBridge.java
+/home/mustafa/telcobright-projects/sip-phone/sip-phone-lib/src/main/java/com/telcobright/sipphone/phone/call/CallMachineFactory.java
 /home/mustafa/telcobright-projects/sip-phone/sip-phone-lib/src/main/java/com/telcobright/sipphone/route/health/RouteHealthContext.java
 /home/mustafa/telcobright-projects/sip-phone/sip-phone-lib/src/main/java/com/telcobright/sipphone/statemachine/FluentBuilder.java
 /home/mustafa/telcobright-projects/sip-phone/sip-phone-lib/src/main/java/com/telcobright/sipphone/phone/CallMachine.java
@@ -39,10 +41,13 @@
 /home/mustafa/telcobright-projects/sip-phone/sip-phone-lib/src/main/java/com/telcobright/sipphone/protocol/SignalingAdapter.java
 /home/mustafa/telcobright-projects/sip-phone/sip-phone-lib/src/main/java/com/telcobright/sipphone/statemachine/StateMachineRegistry.java
 /home/mustafa/telcobright-projects/sip-phone/sip-phone-lib/src/main/java/com/telcobright/sipphone/statemachine/StateConfig.java
+/home/mustafa/telcobright-projects/sip-phone/sip-phone-lib/src/main/java/com/telcobright/sipphone/phone/call/CallMachineEvent.java
+/home/mustafa/telcobright-projects/sip-phone/sip-phone-lib/src/main/java/com/telcobright/sipphone/phone/call/CallMachineRegistry.java
 /home/mustafa/telcobright-projects/sip-phone/sip-phone-lib/src/main/java/com/telcobright/sipphone/protocol/SignalingResult.java
 /home/mustafa/telcobright-projects/sip-phone/sip-phone-lib/src/main/java/com/telcobright/sipphone/media/PcmuCodec.java
 /home/mustafa/telcobright-projects/sip-phone/sip-phone-lib/src/main/java/com/telcobright/sipphone/route/health/RouteHealthMachineFactory.java
 /home/mustafa/telcobright-projects/sip-phone/sip-phone-lib/src/main/java/com/telcobright/sipphone/call/CallData.java
+/home/mustafa/telcobright-projects/sip-phone/sip-phone-lib/src/main/java/com/telcobright/sipphone/phone/CallContext.java
 /home/mustafa/telcobright-projects/sip-phone/sip-phone-lib/src/main/java/com/telcobright/sipphone/phone/RouteEvent.java
 /home/mustafa/telcobright-projects/sip-phone/sip-phone-lib/src/main/java/com/telcobright/sipphone/phone/UiAction.java
 /home/mustafa/telcobright-projects/sip-phone/sip-phone-lib/src/main/java/com/telcobright/sipphone/phone/PhoneEngine.java

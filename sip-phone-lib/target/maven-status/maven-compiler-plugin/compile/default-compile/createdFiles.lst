@@ -27,6 +27,7 @@ com/telcobright/sipphone/phone/AdaptiveBitrateController.class
 com/telcobright/sipphone/phone/UiAction$Mute.class
 com/telcobright/sipphone/statemachine/FluentBuilder$TransitionDef.class
 com/telcobright/sipphone/phone/UiAction.class
+com/telcobright/sipphone/phone/CallContext.class
 com/telcobright/sipphone/route/health/impl/VertoRouteConnectionHandler$VertoCallListener.class
 com/telcobright/sipphone/media/PcmuCodec.class
 com/telcobright/sipphone/phone/PhoneState.class
@@ -64,13 +65,16 @@ com/telcobright/sipphone/media/IceConfig.class
 com/telcobright/sipphone/phone/CallRequest$MuteMedia.class
 com/telcobright/sipphone/phone/UiStateMachine.class
 com/telcobright/sipphone/route/health/HeartbeatMode.class
+com/telcobright/sipphone/phone/CallRuntimeContext.class
 com/telcobright/sipphone/statemachine/TimeoutEvent.class
+com/telcobright/sipphone/phone/call/CallMachineRegistry.class
 com/telcobright/sipphone/phone/PhoneCommand$Dial.class
 com/telcobright/sipphone/protocol/VertoSignalingAdapter$1.class
 com/telcobright/sipphone/route/health/RouteConfig$Builder.class
 com/telcobright/sipphone/phone/MediaHandler.class
 com/telcobright/sipphone/bus/EventBus.class
 com/telcobright/sipphone/phone/PhoneCommand$SendDtmf.class
+com/telcobright/sipphone/phone/call/CallMachineEvent$Type.class
 com/telcobright/sipphone/statemachine/StateConfig.class
 com/telcobright/sipphone/call/events/CallEvents$InviteEvent.class
 com/telcobright/sipphone/phone/RouteEvent.class
@@ -100,6 +104,7 @@ com/telcobright/sipphone/protocol/SignalingBridge.class
 com/telcobright/sipphone/protocol/SignalingAdapter$SignalingListener.class
 com/telcobright/sipphone/call/events/CallEvents$IncomingCallEvent.class
 com/telcobright/sipphone/verto/VertoClient$1.class
+com/telcobright/sipphone/phone/call/CallMachineFactory.class
 com/telcobright/sipphone/call/events/CallEvents$MediaUpdateEvent.class
 com/telcobright/sipphone/protocol/ProtocolType.class
 com/telcobright/sipphone/phone/CallRequest$Answer.class
@@ -113,6 +118,7 @@ com/telcobright/sipphone/verto/SdpBuilder$SdpMediaInfo.class
 com/telcobright/sipphone/verto/SdpBuilder.class
 com/telcobright/sipphone/phone/PhoneCommand$Disconnect.class
 com/telcobright/sipphone/phone/UiAction$Answer.class
+com/telcobright/sipphone/phone/call/CallMachineFactory$1.class
 com/telcobright/sipphone/call/events/CallEvents$RegisteredEvent.class
 com/telcobright/sipphone/statemachine/FluentBuilder$StateBuilder.class
 com/telcobright/sipphone/phone/CallEvent$Ringing.class
@@ -125,6 +131,7 @@ com/telcobright/sipphone/phone/CallEvent$Incoming.class
 com/telcobright/sipphone/phone/PhoneCommand$Register.class
 com/telcobright/sipphone/phone/CallMachine.class
 com/telcobright/sipphone/route/health/RouteHealthEntity.class
+com/telcobright/sipphone/phone/call/CallMachineEvent.class
 com/telcobright/sipphone/route/health/impl/VertoRouteConnectionHandler.class
 com/telcobright/sipphone/phone/CallEvent$Ended.class
 com/telcobright/sipphone/phone/CallRequest$Bye.class

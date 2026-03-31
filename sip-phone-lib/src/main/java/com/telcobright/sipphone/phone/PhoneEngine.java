@@ -1,6 +1,7 @@
 package com.telcobright.sipphone.phone;
 
 import com.telcobright.sipphone.bus.EventBus;
+import com.telcobright.sipphone.phone.call.CallMachineRegistry;
 import com.telcobright.sipphone.protocol.*;
 import com.telcobright.sipphone.route.RouteStatus;
 import com.telcobright.sipphone.route.health.*;
@@ -16,23 +17,14 @@ import java.util.concurrent.*;
 /**
  * Phone engine — wires all layers together.
  *
- * Creates: EventBus, RouteHealthRegistry, CallRouter, CallMachine, UiStateMachine.
- * Listens for UiAction.Register/Disconnect to manage route lifecycle.
- * Publishes RouteEvent when route status changes.
+ * Creates: EventBus, RouteHealthRegistry, CallRouter, CallMachineRegistry,
+ *          AdaptiveBitrateController, CallLogger, UiStateMachine.
  *
- * This is the only class that knows about all layers. Each layer only
- * knows about the event bus and its own concerns.
- *
- * Usage:
- *   PhoneEngine engine = new PhoneEngine();
- *   engine.setMediaHandler(new LinuxMediaHandler());
- *   engine.start();
- *
- *   // UI subscribes to view model
- *   engine.getBus().subscribe(UiViewModel.class, vm -> updateUi(vm));
- *
- *   // UI fires actions
- *   engine.getUiStateMachine().handleAction(new UiAction.Dial("880...", "AMR-NB"));
+ * The CallMachineRegistry:
+ *   - Subscribes to SignalingResult (from protocol) → routes by callId to machine
+ *   - Subscribes to CallRequest (from UI SM) → creates/finds machine
+ *   - Publishes CallEvent (from machine transitions) → consumed by UI SM
+ *   - Each call leg is a GenericStateMachine built by FluentBuilder
  */
 public class PhoneEngine {
 
@@ -41,16 +33,14 @@ public class PhoneEngine {
 
     private final EventBus bus;
     private final UiStateMachine uiSm;
-    private final CallMachine callMachine;
     private final CallRouter callRouter;
     private final RouteHealthRegistry routeRegistry;
+    private CallMachineRegistry callRegistry;
 
     private final ScheduledExecutorService scheduler;
     private int localRtpPort;
     private String localIp;
-
-    /* Active signaling bridge — for forwarding call events from route handler */
-    private volatile VertoSignalingBridge activeVertoBridge;
+    private MediaHandler mediaHandler;
 
     public PhoneEngine() {
         allocatePorts();
@@ -69,9 +59,6 @@ public class PhoneEngine {
         /* Call router */
         callRouter = new CallRouter(routeRegistry);
         callRouter.registerBridge(new VertoRouteSignalingBridge());
-
-        /* Call machine */
-        callMachine = new CallMachine(bus, callRouter, ROUTE_ID, localIp, localRtpPort);
 
         /* Call logger */
         new CallLogger(bus);
@@ -97,7 +84,10 @@ public class PhoneEngine {
     public String getLocalIp() { return localIp; }
 
     public void setMediaHandler(MediaHandler handler) {
-        callMachine.setMediaHandler(handler);
+        this.mediaHandler = handler;
+        /* Create call machine registry now that we have the media handler */
+        callRegistry = new CallMachineRegistry(bus, callRouter, mediaHandler,
+                ROUTE_ID, localIp, localRtpPort);
     }
 
     public void start() {
@@ -135,7 +125,7 @@ public class PhoneEngine {
 
         routeRegistry.registerRoute(config);
 
-        /* Set call listener on route context — forwards to bus as SignalingResult */
+        /* Set call listener — forwards protocol events to bus as SignalingResult */
         RouteHealthContext ctx = routeRegistry.getRouteContext(ROUTE_ID);
         if (ctx != null) {
             ctx.setAttribute("callListener", new VertoRouteConnectionHandler.VertoCallListener() {
@@ -179,13 +169,10 @@ public class PhoneEngine {
                 bus.publish(new RouteEvent.Registered(routeId));
             }
             case DOWN -> {
-                /* Only publish disconnect if we were previously UP.
-                 * During initial CONNECTING, status is DOWN but that's expected. */
                 if (wasEverUp) {
                     wasEverUp = false;
                     bus.publish(new RouteEvent.Disconnected(routeId, "Route down"));
                 }
-                /* Otherwise still CONNECTING — UiAction.Register already published RouteEvent.Connecting */
             }
             case SUSPENDED -> {
                 wasEverUp = false;
